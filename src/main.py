@@ -25,10 +25,12 @@ def chat(
     answer_service = context.answer_service
 
     if retriever is None:
-        raise ValueError("Retreiever could not be built")
+        rich_print("[red]Retreiever could not be built[/red]")
+        raise typer.Exit(code=1)
 
     if answer_service is None:
-        raise ValueError("Could not build answer service")
+        rich_print("[red]Could not build answer service[/red]")
+        raise typer.Exit(code=1)
 
     if not retriever.has_data():
         rich_print(
@@ -50,8 +52,7 @@ def chat(
 
 def show_history(
     record_id: str = typer.Argument(..., help="ID of the record to chat about"),
-):
-    ...
+): ...
 
 
 if __name__ == "__main__":
