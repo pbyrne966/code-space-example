@@ -7,18 +7,21 @@ from rich import print as rich_print
 from sqlalchemy import create_engine
 
 from src.chunking_service.data_loader import ProcessLayer
-from src.config.settings import get_settings
-from src.model_service.models import BaseModelFactory
+from src.config.settings import get_settings, Settings
+from src.model_service.models import BaseModelFactory, OllamaQwenClient
 from src.db_service.postgres_chunk_store import PostgresChunkStore
 from src.db_service.schemas import PgVectorRetriever
+from sqlalchemy.engine import Engine
 from src.logger import get_logger
-from dataclass import dataclass
+from dataclasses import dataclass
+from typing import Optional
+
 
 @dataclass
 class AppState:
     app_settings: Optional[Settings] = None
     qwen_model_client: Optional[OllamaQwenClient] = None
-    db_engine: Optional[Any] = None
+    db_engine: Optional[Engine] = None
     retrieval_service: Optional[PgVectorRetriever] = None
 
 state = AppState()
