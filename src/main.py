@@ -2,13 +2,15 @@
 Main typer app for ConvFinQA
 """
 
+import stat
+
 import typer
 from rich import print as rich_print
 from sqlalchemy import create_engine
 
 from src.chunking_service.data_loader import ProcessLayer
 from src.config.settings import get_settings, Settings
-from src.model_service.models import BaseModelFactory, OllamaQwenClient
+from src.model_service.models import BaseModelFactory, ModelClient
 from src.db_service.postgres_chunk_store import PostgresChunkStore
 from src.db_service.schemas import PgVectorRetriever
 from sqlalchemy.engine import Engine
@@ -20,17 +22,25 @@ from typing import Optional
 @dataclass
 class AppState:
     app_settings: Optional[Settings] = None
-    qwen_model_client: Optional[OllamaQwenClient] = None
+    qwen_model_client: Optional[ModelClient] = None
     db_engine: Optional[Engine] = None
     retrieval_service: Optional[PgVectorRetriever] = None
+
 
 state = AppState()
 
 logger = get_logger("typer_logger")
 
+
 def ensure_app_ready(state: AppState):
-    as_dict = state.as_dict()
-    return all((value is not None for value in as_dict.values()))
+    attrs = [
+        state.app_settings,
+        state.qwen_model_client,
+        state.db_engine,
+        state.retrieval_service,
+    ]
+    return all((value is not None for value in attrs))
+
 
 app = typer.Typer(
     name="main",
@@ -38,13 +48,14 @@ app = typer.Typer(
     add_completion=True,
 )
 
-@app.callback(invoke_without_command=True)
+
+@app.command()
 def startup() -> str:
     """Start the application without requiring a subcommand."""
     logger.info("Starting Up App")
     app_settings = get_settings()
     logger.info("Initilising Qwen")
-    qwen_model_client = BaseModelFactory.create(
+    model_client = BaseModelFactory.create(
         app_settings.model_type, app_settings.model_config_path
     )
     logger.info("Initilising Db Engine")
@@ -55,24 +66,24 @@ def startup() -> str:
     ProcessLayer(
         db_service=db_service,
         raw_file_src=app_settings.raw_data_path,
-        model_client=qwen_model_client,
-    )
+        model_client=model_client,
+    ).process()
     logger.info("Processing Data Has Finished")
 
     logger.info("Retreival Service Ready")
-    # This now needs to set globally
     retrevial_service = PgVectorRetriever(
         db_engine,
-        embedding_fn=qwen_model_client.embed,
-        embedding_model=qwen_model_client.get_config().model_name,
+        embedding_fn=model_client.embed,
+        embedding_model=model_client.get_config().model_name,
     )
 
     state.app_settings = app_settings
-    state.qwen_model_client = qwen_model_client
+    state.qwen_model_client = model_client
     state.db_engine = db_engine
     state.retrieval_service = retrevial_service
 
     return "Processed"
+
 
 @app.command()
 def chat(

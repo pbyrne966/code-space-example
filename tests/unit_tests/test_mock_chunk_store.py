@@ -49,7 +49,9 @@ class MockChunkStoreTest(unittest.TestCase):
         self.assertTrue(store.setup_called)
         self.assertEqual(store.add_chunks_called, 1)
         self.assertEqual(store.embedding_model, "mock-model")
-        self.assertEqual([chunk.chunk_id for chunk in store.chunks], ["chunk-b", "chunk-a"])
+        self.assertEqual(
+            [chunk.chunk_id for chunk in store.chunks], ["chunk-b", "chunk-a"]
+        )
         self.assertEqual(
             [chunk.chunk_id for chunk in store.get_chunks_for_record("record-1")],
             ["chunk-a", "chunk-b"],
