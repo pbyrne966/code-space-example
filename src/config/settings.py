@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     )
 
     # Given a hard coded model name here
-    model_type = "QWEN"
+    model_type: str = "QWEN"
     model_config_path: Path = Field(validation_alias="MODEL_CONFIG_PATH")
 
     raw_data_path: Path = Field(validation_alias="RAW_DATA_PATH")

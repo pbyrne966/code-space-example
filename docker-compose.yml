@@ -14,7 +14,6 @@ services:
         condition: service_healthy
       ollama:
         condition: service_started
-    command: python -m src.main
 
   postgres:
     image: pgvector/pgvector:pg16
