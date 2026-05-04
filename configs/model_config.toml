@@ -1,0 +1,9 @@
+base_url = "http://ollama:11434"
+model_name = "qwen2.5:0.5b"
+chat_endpoint = "/v1/chat/"
+batch_endpoint = "/v1/chat"
+max_tokens = 512
+allowed_timeout = 60
+temperature = 0.0
+top_p = 1.0
+seed = 42

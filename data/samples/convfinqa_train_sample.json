@@ -1,0 +1,246 @@
+{
+  "source_file": "data/convfinqa_dataset.json",
+  "split": "train",
+  "seed": 96,
+  "source_count": 3037,
+  "sample_count": 4,
+  "records": [
+    {
+      "id": "Single_GS/2018/page_165.pdf-4",
+      "doc": {
+        "pre_text": "the goldman sachs group , inc . and subsidiaries notes to consolidated financial statements 2030 purchased interests represent senior and subordinated interests , purchased in connection with secondary market-making activities , in securitization entities in which the firm also holds retained interests . 2030 substantially all of the total outstanding principal amount and total retained interests relate to securitizations during 2014 and thereafter as of december 2018 , and relate to securitizations during 2012 and thereafter as of december 2017 . 2030 the fair value of retained interests was $ 3.28 billion as of december 2018 and $ 2.13 billion as of december 2017 . in addition to the interests in the table above , the firm had other continuing involvement in the form of derivative transactions and commitments with certain nonconsolidated vies . the carrying value of these derivatives and commitments was a net asset of $ 75 million as of december 2018 and $ 86 million as of december 2017 , and the notional amount of these derivatives and commitments was $ 1.09 billion as of december 2018 and $ 1.26 billion as of december 2017 . the notional amounts of these derivatives and commitments are included in maximum exposure to loss in the nonconsolidated vie table in note 12 . the table below presents information about the weighted average key economic assumptions used in measuring the fair value of mortgage-backed retained interests. .",
+        "post_text": "in the table above : 2030 amounts do not reflect the benefit of other financial instruments that are held to mitigate risks inherent in these retained interests . 2030 changes in fair value based on an adverse variation in assumptions generally cannot be extrapolated because the relationship of the change in assumptions to the change in fair value is not usually linear . 2030 the impact of a change in a particular assumption is calculated independently of changes in any other assumption . in practice , simultaneous changes in assumptions might magnify or counteract the sensitivities disclosed above . 2030 the constant prepayment rate is included only for positions for which it is a key assumption in the determination of fair value . 2030 the discount rate for retained interests that relate to u.s . government agency-issued collateralized mortgage obligations does not include any credit loss . expected credit loss assumptions are reflected in the discount rate for the remainder of retained interests . the firm has other retained interests not reflected in the table above with a fair value of $ 133 million and a weighted average life of 4.2 years as of december 2018 , and a fair value of $ 56 million and a weighted average life of 4.5 years as of december 2017 . due to the nature and fair value of certain of these retained interests , the weighted average assumptions for constant prepayment and discount rates and the related sensitivity to adverse changes are not meaningful as of both december 2018 and december 2017 . the firm 2019s maximum exposure to adverse changes in the value of these interests is the carrying value of $ 133 million as of december 2018 and $ 56 million as of december 2017 . note 12 . variable interest entities a variable interest in a vie is an investment ( e.g. , debt or equity ) or other interest ( e.g. , derivatives or loans and lending commitments ) that will absorb portions of the vie 2019s expected losses and/or receive portions of the vie 2019s expected residual returns . the firm 2019s variable interests in vies include senior and subordinated debt ; loans and lending commitments ; limited and general partnership interests ; preferred and common equity ; derivatives that may include foreign currency , equity and/or credit risk ; guarantees ; and certain of the fees the firm receives from investment funds . certain interest rate , foreign currency and credit derivatives the firm enters into with vies are not variable interests because they create , rather than absorb , risk . vies generally finance the purchase of assets by issuing debt and equity securities that are either collateralized by or indexed to the assets held by the vie . the debt and equity securities issued by a vie may include tranches of varying levels of subordination . the firm 2019s involvement with vies includes securitization of financial assets , as described in note 11 , and investments in and loans to other types of vies , as described below . see note 11 for further information about securitization activities , including the definition of beneficial interests . see note 3 for the firm 2019s consolidation policies , including the definition of a vie . goldman sachs 2018 form 10-k 149 .",
+        "table": {
+          "as of december 2018": {
+            "fair value of retained interests": 3151.0,
+            "weighted average life ( years )": 7.2,
+            "constant prepayment rate": -11.9,
+            "impact of 10% ( 10 % ) adverse change": -75.0,
+            "impact of 20% ( 20 % ) adverse change": -147.0,
+            "discount rate": -4.7
+          },
+          "as of december 2017": {
+            "fair value of retained interests": 2071.0,
+            "weighted average life ( years )": 6.0,
+            "constant prepayment rate": -9.4,
+            "impact of 10% ( 10 % ) adverse change": -35.0,
+            "impact of 20% ( 20 % ) adverse change": -70.0,
+            "discount rate": -4.2
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what was the fair value of retained interests in 2018?",
+          "what was the value in 2017?",
+          "what is the difference?",
+          "what was the 2017 value?",
+          "what is the percent change?"
+        ],
+        "conv_answers": [
+          "3.28",
+          "2.13",
+          "1.15",
+          "2.13",
+          "54.0%"
+        ],
+        "turn_program": [
+          "3.28",
+          "2.13",
+          "subtract(3.28, 2.13)",
+          "2.13",
+          "subtract(3.28, 2.13), divide(#0, 2.13)"
+        ],
+        "executed_answers": [
+          3.28,
+          2.13,
+          1.15,
+          2.13,
+          0.53991
+        ],
+        "qa_split": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 5,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Single_STT/2012/page_42.pdf-2",
+      "doc": {
+        "pre_text": "shareholder return performance presentation the graph presented below compares the cumulative total shareholder return on state street's common stock to the cumulative total return of the s&p 500 index and the s&p financial index over a five-year period . the cumulative total shareholder return assumes the investment of $ 100 in state street common stock and in each index on december 31 , 2007 at the closing price on the last trading day of 2007 , and also assumes reinvestment of common stock dividends . the s&p financial index is a publicly available measure of 80 of the standard & poor's 500 companies , representing 26 diversified financial services companies , 22 insurance companies , 17 real estate companies and 15 banking companies . comparison of five-year cumulative total shareholder return .",
+        "post_text": ".",
+        "table": {
+          "2007": {
+            "state street corporation": 100.0,
+            "s&p 500 index": 100.0,
+            "s&p financial index": 100.0
+          },
+          "2008": {
+            "state street corporation": 49.0,
+            "s&p 500 index": 63.0,
+            "s&p financial index": 45.0
+          },
+          "2009": {
+            "state street corporation": 55.0,
+            "s&p 500 index": 80.0,
+            "s&p financial index": 52.0
+          },
+          "2010": {
+            "state street corporation": 58.0,
+            "s&p 500 index": 92.0,
+            "s&p financial index": 59.0
+          },
+          "2011": {
+            "state street corporation": 52.0,
+            "s&p 500 index": 94.0,
+            "s&p financial index": 49.0
+          },
+          "2012": {
+            "state street corporation": 61.0,
+            "s&p 500 index": 109.0,
+            "s&p financial index": 63.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what was the net change in the s&p 500 index from 2007 to 2009?",
+          "what was the percent change?"
+        ],
+        "conv_answers": [
+          "-20",
+          "-20%"
+        ],
+        "turn_program": [
+          "subtract(80, 100)",
+          "subtract(80, 100), divide(#0, 100)"
+        ],
+        "executed_answers": [
+          -20.0,
+          -0.2
+        ],
+        "qa_split": [
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 2,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Double_ECL/2017/page_85.pdf",
+      "doc": {
+        "pre_text": "in january 2016 , the company issued $ 800 million of debt securities consisting of a $ 400 million aggregate principal three year fixed rate note with a coupon rate of 2.00% ( 2.00 % ) and a $ 400 million aggregate principal seven year fixed rate note with a coupon rate of 3.25% ( 3.25 % ) . the proceeds were used to repay a portion of the company 2019s outstanding commercial paper , repay the remaining term loan balance , and for general corporate purposes . the company 2019s public notes and 144a notes may be redeemed by the company at its option at redemption prices that include accrued and unpaid interest and a make-whole premium . upon the occurrence of a change of control accompanied by a downgrade of the notes below investment grade rating , within a specified time period , the company would be required to offer to repurchase the public notes and 144a notes at a price equal to 101% ( 101 % ) of the aggregate principal amount thereof , plus any accrued and unpaid interest to the date of repurchase . the public notes and 144a notes are senior unsecured and unsubordinated obligations of the company and rank equally with all other senior and unsubordinated indebtedness of the company . the company entered into a registration rights agreement in connection with the issuance of the 144a notes . subject to certain limitations set forth in the registration rights agreement , the company has agreed to ( i ) file a registration statement ( the 201cexchange offer registration statement 201d ) with respect to registered offers to exchange the 144a notes for exchange notes ( the 201cexchange notes 201d ) , which will have terms identical in all material respects to the new 10-year notes and new 30-year notes , as applicable , except that the exchange notes will not contain transfer restrictions and will not provide for any increase in the interest rate thereon in certain circumstances and ( ii ) use commercially reasonable efforts to cause the exchange offer registration statement to be declared effective within 270 days after the date of issuance of the 144a notes . until such time as the exchange offer registration statement is declared effective , the 144a notes may only be sold in accordance with rule 144a or regulation s of the securities act of 1933 , as amended . private notes the company 2019s private notes may be redeemed by the company at its option at redemption prices that include accrued and unpaid interest and a make-whole premium . upon the occurrence of specified changes of control involving the company , the company would be required to offer to repurchase the private notes at a price equal to 100% ( 100 % ) of the aggregate principal amount thereof , plus any accrued and unpaid interest to the date of repurchase . additionally , the company would be required to make a similar offer to repurchase the private notes upon the occurrence of specified merger events or asset sales involving the company , when accompanied by a downgrade of the private notes below investment grade rating , within a specified time period . the private notes are unsecured senior obligations of the company and rank equal in right of payment with all other senior indebtedness of the company . the private notes shall be unconditionally guaranteed by subsidiaries of the company in certain circumstances , as described in the note purchase agreements as amended . other debt during 2015 , the company acquired the beneficial interest in the trust owning the leased naperville facility resulting in debt assumption of $ 100.2 million and the addition of $ 135.2 million in property , plant and equipment . certain administrative , divisional , and research and development personnel are based at the naperville facility . cash paid as a result of the transaction was $ 19.8 million . the assumption of debt and the majority of the property , plant and equipment addition represented non-cash financing and investing activities , respectively . the remaining balance on the assumed debt was settled in december 2017 and was reflected in the \"other\" line of the table above at december 31 , 2016 . covenants and future maturities the company is in compliance with all covenants under the company 2019s outstanding indebtedness at december 31 , 2017 . as of december 31 , 2017 , the aggregate annual maturities of long-term debt for the next five years were : ( millions ) .",
+        "post_text": ".",
+        "table": {
+          "$ 550": {
+            "2019": 397.0,
+            "2020": 300.0,
+            "2021": 1017.0,
+            "2022": 497.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "as of january 2016, what was the amount equivalent to an annual interest rate of to the 3.25% ( 3.25 % ) note issued, in millions?",
+          "and what was that amount for the 2.00% ( 2.00 % ) note issued?",
+          "what was, then, in millions, the total annual interest expense combining both notes?"
+        ],
+        "conv_answers": [
+          "13",
+          "8",
+          "21"
+        ],
+        "turn_program": [
+          "multiply(400, 3.25%)",
+          "multiply(400, 3.25%), multiply(400, 2.00%)",
+          "multiply(400, 3.25%), multiply(400, 2.00%), add(#1, #0)"
+        ],
+        "executed_answers": [
+          13.0,
+          8.0,
+          21.0
+        ],
+        "qa_split": [
+          false,
+          true,
+          true
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 3,
+        "has_type2_question": true,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Single_RCL/2012/page_80.pdf-1",
+      "doc": {
+        "pre_text": "notes to the consolidated financial statements competitive environment and general economic and business conditions , among other factors . pullmantur is a brand targeted primarily at the spanish , portu- guese and latin american markets and although pullmantur has diversified its passenger sourcing over the past few years , spain still represents pullmantur 2019s largest market . as previously disclosed , during 2012 european economies continued to demonstrate insta- bility in light of heightened concerns over sovereign debt issues as well as the impact of proposed auster- ity measures on certain markets . the spanish econ- omy was more severely impacted than many other economies and there is significant uncertainty as to when it will recover . in addition , the impact of the costa concordia incident has had a more lingering effect than expected and the impact in future years is uncertain . these factors were identified in the past as significant risks which could lead to the impairment of pullmantur 2019s goodwill . more recently , the spanish economy has progressively worsened and forecasts suggest the challenging operating environment will continue for an extended period of time . the unemployment rate in spain reached 26% ( 26 % ) during the fourth quarter of 2012 and is expected to rise further in 2013 . the international monetary fund , which had projected gdp growth of 1.8% ( 1.8 % ) a year ago , revised its 2013 gdp projections downward for spain to a contraction of 1.3% ( 1.3 % ) during the fourth quarter of 2012 and further reduced it to a contraction of 1.5% ( 1.5 % ) in january of 2013 . during the latter half of 2012 new austerity measures , such as increases to the value added tax , cuts to benefits , the phasing out of exemptions and the suspension of government bonuses , were implemented by the spanish government . we believe these austerity measures are having a larger impact on consumer confidence and discretionary spending than previously anticipated . as a result , there has been a significant deterioration in bookings from guests sourced from spain during the 2013 wave season . the combination of all of these factors has caused us to negatively adjust our cash flow projections , especially our closer-in net yield assumptions and the expectations regarding future capacity growth for the brand . based on our updated cash flow projections , we determined the implied fair value of goodwill for the pullmantur reporting unit was $ 145.5 million and rec- ognized an impairment charge of $ 319.2 million . this impairment charge was recognized in earnings during the fourth quarter of 2012 and is reported within impairment of pullmantur related assets within our consolidated statements of comprehensive income ( loss ) . there have been no goodwill impairment charges related to the pullmantur reporting unit in prior periods . see note 13 . fair value measurements and derivative instruments for further discussion . if the spanish economy weakens further or recovers more slowly than contemplated or if the economies of other markets ( e.g . france , brazil , latin america ) perform worse than contemplated in our discounted cash flow model , or if there are material changes to the projected future cash flows used in the impair- ment analyses , especially in net yields , an additional impairment charge of the pullmantur reporting unit 2019s goodwill may be required . note 4 . intangible assets intangible assets are reported in other assets in our consolidated balance sheets and consist of the follow- ing ( in thousands ) : .",
+        "post_text": "during the fourth quarter of 2012 , we performed the annual impairment review of our trademarks and trade names using a discounted cash flow model and the relief-from-royalty method . the royalty rate used is based on comparable royalty agreements in the tourism and hospitality industry . these trademarks and trade names relate to pullmantur and we have used a discount rate comparable to the rate used in valuing the pullmantur reporting unit in our goodwill impairment test . as described in note 3 . goodwill , the continued deterioration of the spanish economy caused us to negatively adjust our cash flow projections for the pullmantur reporting unit , especially our closer-in net yield assumptions and the timing of future capacity growth for the brand . based on our updated cash flow projections , we determined that the fair value of pullmantur 2019s trademarks and trade names no longer exceeded their carrying value . accordingly , we recog- nized an impairment charge of approximately $ 17.4 million to write down trademarks and trade names to their fair value of $ 204.9 million . this impairment charge was recognized in earnings during the fourth quarter of 2012 and is reported within impairment of pullmantur related assets within our consolidated statements of comprehensive income ( loss ) . see note 13 . fair value measurements and derivative instruments for further discussion . if the spanish economy weakens further or recovers more slowly than contemplated or if the economies of other markets ( e.g . france , brazil , latin america ) 0494.indd 76 3/27/13 12:53 pm .",
+        "table": {
+          "2012": {
+            "indefinite-life intangible asset 2014pullmantur trademarks and trade names": 218883.0,
+            "impairment charge": -17356.0,
+            "foreign currency translation adjustment": 3339.0,
+            "total": 204866.0
+          },
+          "2011": {
+            "indefinite-life intangible asset 2014pullmantur trademarks and trade names": 225679.0,
+            "impairment charge": 2014.0,
+            "foreign currency translation adjustment": -6796.0,
+            "total": 218883.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what is net change in total value of intangible assets from 2011 to 2012?",
+          "what is the total value of intangible assets in 2011?",
+          "what percentage change does this represent?"
+        ],
+        "conv_answers": [
+          "-14017",
+          "218883",
+          "-6.4%"
+        ],
+        "turn_program": [
+          "subtract(204866, 218883)",
+          "218883",
+          "subtract(204866, 218883), divide(#0, 218883)"
+        ],
+        "executed_answers": [
+          -14017.0,
+          218883.0,
+          -0.06404
+        ],
+        "qa_split": [
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 3,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    }
+  ]
+}

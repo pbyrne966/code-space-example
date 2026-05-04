@@ -1,0 +1,335 @@
+{
+  "source_file": "data/convfinqa_dataset.json",
+  "split": "dev",
+  "seed": 96,
+  "source_count": 421,
+  "sample_count": 4,
+  "records": [
+    {
+      "id": "Single_TSCO/2017/page_31.pdf-2",
+      "doc": {
+        "pre_text": "stock performance graph this performance graph shall not be deemed 201cfiled 201d for purposes of section 18 of the securities exchange act of 1934 , as amended ( the 201cexchange act 201d ) or otherwise subject to the liabilities under that section and shall not be deemed to be incorporated by reference into any filing of tractor supply company under the securities act of 1933 , as amended , or the exchange act . the following graph compares the cumulative total stockholder return on our common stock from december 29 , 2012 to december 30 , 2017 ( the company 2019s fiscal year-end ) , with the cumulative total returns of the s&p 500 index and the s&p retail index over the same period . the comparison assumes that $ 100 was invested on december 29 , 2012 , in our common stock and in each of the foregoing indices and in each case assumes reinvestment of dividends . the historical stock price performance shown on this graph is not indicative of future performance. .",
+        "post_text": ".",
+        "table": {
+          "12/29/2012": {
+            "tractor supply company": 100.0,
+            "s&p 500": 100.0,
+            "s&p retail index": 100.0
+          },
+          "12/28/2013": {
+            "tractor supply company": 174.14,
+            "s&p 500": 134.11,
+            "s&p retail index": 147.73
+          },
+          "12/27/2014": {
+            "tractor supply company": 181.29,
+            "s&p 500": 155.24,
+            "s&p retail index": 164.24
+          },
+          "12/26/2015": {
+            "tractor supply company": 201.04,
+            "s&p 500": 156.43,
+            "s&p retail index": 207.15
+          },
+          "12/31/2016": {
+            "tractor supply company": 179.94,
+            "s&p 500": 173.74,
+            "s&p retail index": 219.43
+          },
+          "12/30/2017": {
+            "tractor supply company": 180.52,
+            "s&p 500": 211.67,
+            "s&p retail index": 286.13
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what was the change in the performance value of the s&p 500 from 2012 to 2017?",
+          "and how much does this change represent in relation to that performance value in 2012, in percentage?",
+          "what was the change in the performance value of the s&p 500 retail index from 2012 to 2017?",
+          "and how much does this change represent in relation to that performance value in 2012, in percentage?",
+          "what is, then, the difference between the s&p 500 percentage change and the s&p 500 retail index one?"
+        ],
+        "conv_answers": [
+          "111.67",
+          "112.7%",
+          "186.13",
+          "186.1%",
+          "73.4%"
+        ],
+        "turn_program": [
+          "subtract(211.67, 100)",
+          "subtract(211.67, 100), divide(#0, 100)",
+          "subtract(211.67, 100), divide(#0, 100), subtract(286.13, 100)",
+          "subtract(211.67, 100), divide(#0, 100), subtract(286.13, 100), divide(#2, 100)",
+          "subtract(211.67, 100), divide(#0, 100), subtract(286.13, 100), divide(#2, 100), subtract(#3, #1)"
+        ],
+        "executed_answers": [
+          111.67,
+          1.1167,
+          186.13,
+          1.8613,
+          0.7446
+        ],
+        "qa_split": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 5,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Single_LKQ/2016/page_26.pdf-1",
+      "doc": {
+        "pre_text": "comparison of cumulative return among lkq corporation , the nasdaq stock market ( u.s. ) index and the peer group .",
+        "post_text": "this stock performance information is \"furnished\" and shall not be deemed to be \"soliciting material\" or subject to rule 14a , shall not be deemed \"filed\" for purposes of section 18 of the securities exchange act of 1934 or otherwise subject to the liabilities of that section , and shall not be deemed incorporated by reference in any filing under the securities act of 1933 or the securities exchange act of 1934 , whether made before or after the date of this report and irrespective of any general incorporation by reference language in any such filing , except to the extent that it specifically incorporates the information by reference . information about our common stock that may be issued under our equity compensation plans as of december 31 , 2016 included in part iii , item 12 of this annual report on form 10-k is incorporated herein by reference. .",
+        "table": {
+          "12/31/2011": {
+            "lkq corporation": 100.0,
+            "s&p 500 index": 100.0,
+            "peer group": 100.0
+          },
+          "12/31/2012": {
+            "lkq corporation": 140.0,
+            "s&p 500 index": 113.0,
+            "peer group": 111.0
+          },
+          "12/31/2013": {
+            "lkq corporation": 219.0,
+            "s&p 500 index": 147.0,
+            "peer group": 140.0
+          },
+          "12/31/2014": {
+            "lkq corporation": 187.0,
+            "s&p 500 index": 164.0,
+            "peer group": 177.0
+          },
+          "12/31/2015": {
+            "lkq corporation": 197.0,
+            "s&p 500 index": 163.0,
+            "peer group": 188.0
+          },
+          "12/31/2016": {
+            "lkq corporation": 204.0,
+            "s&p 500 index": 178.0,
+            "peer group": 217.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what was the price of lkq corporation in 2016?",
+          "what was the price in 2011?",
+          "what is the net difference?",
+          "what was the 2011 price?",
+          "what is the change over the 2011 price?"
+        ],
+        "conv_answers": [
+          "204",
+          "100",
+          "104",
+          "100",
+          "104%"
+        ],
+        "turn_program": [
+          "204",
+          "100",
+          "subtract(204, 100)",
+          "100",
+          "subtract(204, 100), divide(#0, 100)"
+        ],
+        "executed_answers": [
+          204.0,
+          100.0,
+          104.0,
+          100.0,
+          1.04
+        ],
+        "qa_split": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 5,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Double_BLL/2010/page_28.pdf",
+      "doc": {
+        "pre_text": "page 15 of 100 shareholder return performance the line graph below compares the annual percentage change in ball corporation 2019s cumulative total shareholder return on its common stock with the cumulative total return of the dow jones containers & packaging index and the s&p composite 500 stock index for the five-year period ended december 31 , 2010 . it assumes $ 100 was invested on december 31 , 2005 , and that all dividends were reinvested . the dow jones containers & packaging index total return has been weighted by market capitalization . total return analysis .",
+        "post_text": ".",
+        "table": {
+          "12/31/05": {
+            "ball corporation": 100.0,
+            "dj containers & packaging index": 100.0,
+            "s&p 500 index": 100.0,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          },
+          "12/31/06": {
+            "ball corporation": 110.86,
+            "dj containers & packaging index": 112.09,
+            "s&p 500 index": 115.8,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          },
+          "12/31/07": {
+            "ball corporation": 115.36,
+            "dj containers & packaging index": 119.63,
+            "s&p 500 index": 122.16,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          },
+          "12/31/08": {
+            "ball corporation": 107.58,
+            "dj containers & packaging index": 75.0,
+            "s&p 500 index": 76.96,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          },
+          "12/31/09": {
+            "ball corporation": 134.96,
+            "dj containers & packaging index": 105.34,
+            "s&p 500 index": 97.33,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          },
+          "12/31/10": {
+            "ball corporation": 178.93,
+            "dj containers & packaging index": 123.56,
+            "s&p 500 index": 111.99,
+            "copyright a9 2011 standard & poor 2019s a division of the mcgraw-hill companies inc . all rights reserved . ( www.researchdatagroup.com/s&p.htm )": -9.0,
+            "copyright a9 2011 dow jones & company . all rights reserved .": 9.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what was the change in price for ball corporation between 12/31/10 and 12/31/05?",
+          "so what was the percentage cumulative return during this time?",
+          "did the five year total return for ball corporation outperform the dj containers & packaging index?"
+        ],
+        "conv_answers": [
+          "78.93",
+          "78.93%",
+          "yes"
+        ],
+        "turn_program": [
+          "subtract(178.93, const_100)",
+          "subtract(178.93, const_100), divide(#0, const_100)",
+          "greater(178.93, 105.34)"
+        ],
+        "executed_answers": [
+          78.93,
+          0.7893,
+          "yes"
+        ],
+        "qa_split": [
+          false,
+          false,
+          true
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 3,
+        "has_type2_question": true,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    },
+    {
+      "id": "Single_JPM/2014/page_65.pdf-1",
+      "doc": {
+        "pre_text": "jpmorgan chase & co./2014 annual report 63 five-year stock performance the following table and graph compare the five-year cumulative total return for jpmorgan chase & co . ( 201cjpmorgan chase 201d or the 201cfirm 201d ) common stock with the cumulative return of the s&p 500 index , the kbw bank index and the s&p financial index . the s&p 500 index is a commonly referenced u.s . equity benchmark consisting of leading companies from different economic sectors . the kbw bank index seeks to reflect the performance of banks and thrifts that are publicly traded in the u.s . and is composed of 24 leading national money center and regional banks and thrifts . the s&p financial index is an index of 85 financial companies , all of which are components of the s&p 500 . the firm is a component of all three industry indices . the following table and graph assume simultaneous investments of $ 100 on december 31 , 2009 , in jpmorgan chase common stock and in each of the above indices . the comparison assumes that all dividends are reinvested . december 31 , ( in dollars ) 2009 2010 2011 2012 2013 2014 .",
+        "post_text": ".",
+        "table": {
+          "2009": {
+            "jpmorgan chase": 100.0,
+            "kbw bank index": 100.0,
+            "s&p financial index": 100.0,
+            "s&p 500 index": 100.0
+          },
+          "2010": {
+            "jpmorgan chase": 102.3,
+            "kbw bank index": 123.36,
+            "s&p financial index": 112.13,
+            "s&p 500 index": 115.06
+          },
+          "2011": {
+            "jpmorgan chase": 81.87,
+            "kbw bank index": 94.75,
+            "s&p financial index": 93.0,
+            "s&p 500 index": 117.48
+          },
+          "2012": {
+            "jpmorgan chase": 111.49,
+            "kbw bank index": 125.91,
+            "s&p financial index": 119.73,
+            "s&p 500 index": 136.27
+          },
+          "2013": {
+            "jpmorgan chase": 152.42,
+            "kbw bank index": 173.45,
+            "s&p financial index": 162.34,
+            "s&p 500 index": 180.39
+          },
+          "2014": {
+            "jpmorgan chase": 167.48,
+            "kbw bank index": 189.69,
+            "s&p financial index": 186.98,
+            "s&p 500 index": 205.07
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what is the price of jpmorgan chase in 2014?",
+          "what is that less an initial $100 investment?",
+          "what is that change over 100?"
+        ],
+        "conv_answers": [
+          "167.48",
+          "67.48",
+          "67.48%"
+        ],
+        "turn_program": [
+          "167.48",
+          "subtract(167.48, const_100)",
+          "subtract(167.48, const_100), divide(#0, const_100)"
+        ],
+        "executed_answers": [
+          167.48,
+          67.48,
+          0.6748
+        ],
+        "qa_split": [
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 3,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    }
+  ]
+}
