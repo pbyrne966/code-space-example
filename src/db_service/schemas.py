@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     func,
     select,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
@@ -160,7 +161,7 @@ class PgVectorRetriever:
             )
             .join(
                 RetrievalChunkTable,
-                ChunkEmbeddingTable.chunk_id == ChunkEmbeddingTable.chunk_id,
+                RetrievalChunkTable.chunk_id == ChunkEmbeddingTable.chunk_id,
             )
             .where(ChunkEmbeddingTable.embedding_model == self.embedding_model)
             .order_by("distance")
@@ -170,7 +171,95 @@ class PgVectorRetriever:
         with self.session_factory() as session:
             return session.execute(stmt).all()
 
+    def has_data(self) -> bool:
+        """Return whether any retrieval chunks exist for the active database."""
+        statement = select(func.count()).select_from(RetrievalChunkTable)
 
-class ChatHistory(Base):
-    __tablename__ = "chat_history"
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+        with self.session_factory() as session:
+            count = session.execute(statement).scalar_one()
+            return count > 0
+
+
+class ChatSession(Base):
+    """Chat session metadata for conversation persistence and compaction."""
+
+    __tablename__ = "chat_sessions"
+    __table_args__ = (
+        CheckConstraint("message_count >= 0", name="ck_chat_sessions_message_count"),
+        CheckConstraint(
+            "last_message_index >= -1",
+            name="ck_chat_sessions_last_message_index",
+        ),
+        Index("ix_chat_sessions_last_message_at", "last_message_at"),
+    )
+
+    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    title: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    message_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    last_message_index: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("-1"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    messages: Mapped[list["ChatExchange"]] = relationship(
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="ChatExchange.message_id",
+    )
+
+
+class ChatExchange(Base):
+    """Individual chat messages stored in append order."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        Index("ix_chat_messages_session_created_at", "session_id", "created_at"),
+    )
+
+    message_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    session_id: Mapped[str] = mapped_column(
+        ForeignKey("chat_sessions.session_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    session: Mapped[ChatSession] = relationship(back_populates="messages")
+
+
+class ChatCompaction(Base):
+    __tablename__ = "chat_compactions"
+    __abstract__ = True
+
+
+ChatHistory = ChatSession

@@ -11,6 +11,8 @@ RUN uv sync --frozen --no-dev --no-editable
 COPY src ./src
 COPY tests ./tests
 COPY configs ./configs
+COPY scripts ./scripts
+COPY data ./data
 
 ENV PYTHONPATH=/app
 

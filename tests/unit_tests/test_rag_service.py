@@ -1,11 +1,11 @@
 import unittest
 from types import SimpleNamespace
 
-from src.rag_service import RagAnswer, RAGQwenService, RetrieverClient
+from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 
-class FakeRetriever(RetrieverClient):
+class FakeRetriever:
     """Return a fixed retrieval result for RAG tests."""
 
     def retrieve(self, query: str):
@@ -27,7 +27,7 @@ class RagServiceTest(unittest.TestCase):
             model_name="test-model",
             chat_output='{"answer":"ok","citations":[]}',
         )
-        service = RAGQwenService(
+        service = RAGService(
             model_client=model_client,
             retriever=FakeRetriever(),
         )
@@ -43,12 +43,12 @@ class RagServiceTest(unittest.TestCase):
             prompt,
         )
 
-    def test_answer_validates_json_and_uses_cache(self) -> None:
+    def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
             chat_output='{"answer":"Revenue was 100.","citations":["chunk-1"]}',
         )
-        service = RAGQwenService(
+        service = RAGService(
             model_client=model_client,
             retriever=FakeRetriever(),
         )
@@ -60,16 +60,16 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(result.citations, ["chunk-1"])
         self.assertEqual(len(model_client.prompts), 1)
 
-        cached = service.answer("What is revenue?")
-        self.assertEqual(cached.answer, "Revenue was 100.")
-        self.assertEqual(len(model_client.prompts), 1)
+        repeat = service.answer("What is revenue?")
+        self.assertEqual(repeat.answer, "Revenue was 100.")
+        self.assertEqual(len(model_client.prompts), 2)
 
     def test_answer_rejects_invalid_json(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
             chat_output="not json",
         )
-        service = RAGQwenService(
+        service = RAGService(
             model_client=model_client,
             retriever=FakeRetriever(),
         )

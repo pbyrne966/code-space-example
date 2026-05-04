@@ -2,10 +2,8 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: convfinqa-postgres
-    environment:
-      POSTGRES_DB: convfinqa
-      POSTGRES_USER: convfinqa
-      POSTGRES_PASSWORD: convfinqa
+    env_file:
+      - docker_env.env
     ports:
       - "5432:5432"
     volumes:
@@ -23,6 +21,17 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+
+  app:
+    build: .
+    container_name: convfinqa-app
+    env_file:
+      - docker_env.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
 
 volumes:
   postgres_data:
