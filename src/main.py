@@ -68,6 +68,7 @@ def startup() -> str:
         raw_file_src=app_settings.raw_data_path,
         model_client=model_client,
     ).process()
+
     logger.info("Processing Data Has Finished")
 
     logger.info("Retreival Service Ready")
