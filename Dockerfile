@@ -16,4 +16,4 @@ COPY data ./data
 
 ENV PYTHONPATH=/app
 
-CMD ["uv", "run", "python", "-m", "src.main"]
+CMD ["uv", "run", "python", "scripts/ingest_convfinqa.py"]
