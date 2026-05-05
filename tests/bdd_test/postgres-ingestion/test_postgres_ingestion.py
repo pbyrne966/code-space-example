@@ -10,8 +10,12 @@ from sqlalchemy import create_engine
 from scripts import setup_db
 from src.chunking_service.data_loader import ProcessLayer
 from src.config.settings import get_settings
-from src.db_service.data_types import RetrievedChunkRecord
-from src.db_service.postgres_controllers import PostgresChunkStore
+from src.db_service.data_types import (
+    ChatHistoryPair,
+    ChatSessionRecord,
+    RetrievedChunkRecord,
+)
+from src.db_service.postgres_controllers import PostgresChatService, PostgresChunkStore
 from src.db_service.schemas import MAX_EMBEDDING_DIMENSION
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
@@ -28,6 +32,14 @@ def _postgres_url() -> str | None:
 )
 def test_process_layer_ingests_sample_file_into_postgres() -> None:
     """Run the Postgres sample ingestion scenario."""
+
+
+@scenario(
+    "postgres_ingestion.feature",
+    "Chat session records messages after sample ingestion",
+)
+def test_chat_session_records_messages_after_sample_ingestion() -> None:
+    """Run the Postgres chat session behaviour scenario."""
 
 
 @given("a Postgres behaviour database is configured", target_fixture="database_url")
@@ -71,7 +83,10 @@ def sample_context(tmp_path: Path) -> dict[str, object]:
 
 
 @when("I run the process layer ingestion", target_fixture="ingestion_result")
-def ingestion_result(database_url: str, sample_context: dict[str, object]) -> dict[str, object]:
+@given("the sample record has been ingested", target_fixture="ingestion_result")
+def ingestion_result(
+    database_url: str, sample_context: dict[str, object]
+) -> dict[str, object]:
     """Run ProcessLayer against a real Postgres-backed chunk store."""
     model_client = MockOllamaClient(model_name=f"behaviour-model-{uuid4()}")
     store = PostgresChunkStore(
@@ -93,6 +108,41 @@ def ingestion_result(database_url: str, sample_context: dict[str, object]) -> di
         "record_id": sample_context["record_id"],
         "store": store,
     }
+
+
+@when("I start a chat session for the sample record", target_fixture="chat_context")
+def chat_context(database_url: str, ingestion_result: dict[str, object]) -> dict[str, object]:
+    """Create or resume a chat session for the ingested record."""
+    record_id = ingestion_result["record_id"]
+    assert isinstance(record_id, str)
+
+    chat_service = PostgresChatService(create_engine(database_url))
+    chat_session = chat_service.start_or_resume_session(record_id)
+
+    return {
+        "chat_service": chat_service,
+        "chat_session": chat_session,
+        "record_id": record_id,
+    }
+
+
+@when("I append a user question and assistant answer")
+def append_chat_messages(chat_context: dict[str, object]) -> None:
+    """Append one full user/assistant turn to the chat session."""
+    chat_service = chat_context["chat_service"]
+    chat_session = chat_context["chat_session"]
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+
+    chat_service.record_user_message(
+        chat_session.session_id,
+        "What was the important sample fact?",
+    )
+    chat_service.record_assistant_message(
+        chat_session.session_id,
+        '{"answer":"The sample was ingested.","citations":[]}',
+    )
 
 
 @then("chunks should be persisted for the sample record")
@@ -129,3 +179,42 @@ def vector_retrieval_should_return_chunks(ingestion_result: dict[str, object]) -
     assert len(results[0].chunk.text) > 0
     assert store.embedding_fn is not None
     assert len(store.embedding_fn(chunks[0].text)) == MAX_EMBEDDING_DIMENSION
+
+
+@then("the chat session should track both messages")
+def chat_session_should_track_messages(chat_context: dict[str, object]) -> None:
+    """Assert session metadata advances after appending messages."""
+    chat_service = chat_context["chat_service"]
+    chat_session = chat_context["chat_session"]
+    record_id = chat_context["record_id"]
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+    assert isinstance(record_id, str)
+
+    updated_session = chat_service.get_session(record_id)
+    assert isinstance(updated_session, ChatSessionRecord)
+    assert updated_session.session_id == chat_session.session_id
+    assert updated_session.record_id == record_id
+    assert updated_session.message_count >= chat_session.message_count + 2
+    assert updated_session.last_message_index >= chat_session.last_message_index + 2
+
+
+@then("chat history should contain the user answer pair")
+def chat_history_should_contain_pair(chat_context: dict[str, object]) -> None:
+    """Assert history returns Pydantic user/assistant message pairs."""
+    chat_service = chat_context["chat_service"]
+    chat_session = chat_context["chat_session"]
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+
+    history = chat_service.show_history(chat_session.session_id, limit=2)
+    assert len(history) == 1
+    assert isinstance(history[0], ChatHistoryPair)
+    assert history[0].user_question.role == "user"
+    assert history[0].user_question.content == "What was the important sample fact?"
+    assert history[0].assistant.role == "assistant"
+    assert history[0].assistant.content == (
+        '{"answer":"The sample was ingested.","citations":[]}'
+    )
