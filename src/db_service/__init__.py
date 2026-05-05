@@ -27,3 +27,4 @@ from .schemas import (
 from .schemas import (
     RetrievalChunkTable as RetrievalChunkTable,
 )
+from .schemas import SourceRecordTable as SourceRecordTable

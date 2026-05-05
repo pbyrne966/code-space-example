@@ -59,6 +59,7 @@ class RetrievalChunk(BaseModel):
 
     chunk_id: str
     record_id: str
+    source_file: str | None = None
     record_index: int
     chunk_index: int
     split: SplitName
@@ -77,6 +78,19 @@ class RetrievalChunk(BaseModel):
     dates: list[str] = Field(default_factory=list)
     period_labels: list[str] = Field(default_factory=list)
 
+    has_type2_question: bool
+    has_duplicate_columns: bool
+    has_non_numeric_values: bool
+    num_dialogue_turns: int
+
+
+class SourceRecordMetadata(BaseModel):
+    """Metadata for one source ConvFinQA record."""
+
+    record_id: str
+    source_file: str | None = None
+    record_index: int
+    split: SplitName
     has_type2_question: bool
     has_duplicate_columns: bool
     has_non_numeric_values: bool

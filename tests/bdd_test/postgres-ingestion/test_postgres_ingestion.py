@@ -16,7 +16,7 @@ from src.db_service.data_types import (
     RetrievedChunkRecord,
 )
 from src.db_service.postgres_controllers import PostgresChatService, PostgresChunkStore
-from src.db_service.schemas import MAX_EMBEDDING_DIMENSION
+from src.db_service.schemas import MAX_EMBEDDING_DIMENSION, SourceRecordTable
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 BDD_ENV_PATH = Path("tests/bdd_test/postgres_behaviour.env")
@@ -113,6 +113,8 @@ def sample_context(tmp_path: Path) -> dict[str, object]:
     return {
         "raw_path": raw_path,
         "record_id": record["id"],
+        "source_file": str(sample_path),
+        "split": split,
     }
 
 
@@ -183,7 +185,9 @@ def append_chat_messages(chat_context: dict[str, object]) -> None:
 
 
 @then("chunks should be persisted for the sample record")
-def chunks_should_be_persisted(ingestion_result: dict[str, object]) -> None:
+def chunks_should_be_persisted(
+    ingestion_result: dict[str, object], sample_context: dict[str, object]
+) -> None:
     """Assert the chunks written through ProcessLayer can be read back."""
     store = ingestion_result["store"]
     record_id = ingestion_result["record_id"]
@@ -196,6 +200,13 @@ def chunks_should_be_persisted(ingestion_result: dict[str, object]) -> None:
 
     stored_chunks = store.get_chunks_for_record(record_id)
     assert stored_chunks == chunks
+
+    with store.session_factory() as session:
+        source_record = session.get(SourceRecordTable, record_id)
+    assert source_record is not None
+    assert source_record.record_id == record_id
+    assert source_record.source_file == str(sample_context["raw_path"])
+    assert source_record.split == sample_context["split"]
 
 
 @then("vector retrieval should return persisted chunks")

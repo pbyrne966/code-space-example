@@ -117,10 +117,11 @@ def _find_metrics_in_text(text: str, metrics: list[NormalizedMetric]) -> list[st
 
 
 def create_common_fields(
-    record: ConvFinQARecord, record_index: int, split: SplitName
+    record: ConvFinQARecord, record_index: int, split: SplitName, source_file: Path
 ) -> dict[str, Any]:
     return {
         "record_id": record.id,
+        "source_file": source_file.as_posix(),
         "record_index": record_index,
         "split": split,
         "has_type2_question": record.features.has_type2_question,
@@ -183,7 +184,7 @@ def chunk_record(
 ) -> list[RetrievalChunk]:
     chunk_records: list[RetrievalChunk] = []
     chunk_counter = count()
-    common_fields = create_common_fields(record, record_index, split)
+    common_fields = create_common_fields(record, record_index, split, source_file)
     table_metrics = _extract_table_metrics(record.doc.table)
 
     source_file_name = source_file.name

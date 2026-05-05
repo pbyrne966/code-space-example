@@ -25,7 +25,12 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-from src.data_types import ChunkType, EmbeddedChunk, RetrievalChunk
+from src.data_types import (
+    ChunkType,
+    EmbeddedChunk,
+    RetrievalChunk,
+    SourceRecordMetadata,
+)
 from src.db_service.data_types import ChatMessageRecord, ChatSessionRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
@@ -34,6 +39,59 @@ MAX_EMBEDDING_DIMENSION = 896
 
 class Base(DeclarativeBase):
     """Base class for database tables."""
+
+
+class SourceRecordTable(Base):
+    """Metadata for one source ConvFinQA record."""
+
+    __tablename__ = "source_records"
+    __table_args__ = (
+        CheckConstraint("record_index >= 0", name="ck_source_records_record_index"),
+        Index("ix_source_records_split_record", "split", "record_id"),
+    )
+
+    record_id: Mapped[str] = mapped_column(String, primary_key=True)
+    source_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    record_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    split: Mapped[str] = mapped_column(String, nullable=False, index=True)
+
+    has_type2_question: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    has_duplicate_columns: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    has_non_numeric_values: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    num_dialogue_turns: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    chunks: Mapped[list["RetrievalChunkTable"]] = relationship(
+        back_populates="source_record",
+        cascade="all, delete-orphan",
+    )
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="source_record",
+    )
+
+    def to_pydantic(self) -> SourceRecordMetadata:
+        """Serialize the ORM row into source record metadata."""
+        return SourceRecordMetadata(
+            record_id=self.record_id,
+            source_file=self.source_file,
+            record_index=self.record_index,
+            split=self.split,  # type: ignore[arg-type]
+            has_type2_question=self.has_type2_question,
+            has_duplicate_columns=self.has_duplicate_columns,
+            has_non_numeric_values=self.has_non_numeric_values,
+            num_dialogue_turns=self.num_dialogue_turns,
+        )
 
 
 class RetrievalChunkTable(Base):
@@ -48,7 +106,12 @@ class RetrievalChunkTable(Base):
     )
 
     chunk_id: Mapped[str] = mapped_column(String, primary_key=True)
-    record_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    record_id: Mapped[str] = mapped_column(
+        ForeignKey("source_records.record_id"),
+        nullable=False,
+        index=True,
+    )
+    source_file: Mapped[str | None] = mapped_column(String, nullable=True)
     record_index: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
 
@@ -101,12 +164,14 @@ class RetrievalChunkTable(Base):
         back_populates="chunk",
         cascade="all, delete-orphan",
     )
+    source_record: Mapped[SourceRecordTable] = relationship(back_populates="chunks")
 
     def to_pydantic(self) -> RetrievalChunk:
         """Serialize the ORM row into the retrieval chunk read model."""
         return RetrievalChunk(
             chunk_id=self.chunk_id,
             record_id=self.record_id,
+            source_file=self.source_file,
             record_index=self.record_index,
             chunk_index=self.chunk_index,
             split=self.split,  # type: ignore[arg-type]
@@ -194,7 +259,11 @@ class ChatSession(Base):
         primary_key=True,
         default=lambda: str(uuid4()),
     )
-    record_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    record_id: Mapped[str] = mapped_column(
+        ForeignKey("source_records.record_id"),
+        nullable=False,
+        index=True,
+    )
     title: Mapped[str | None] = mapped_column(String, nullable=True)
 
     message_count: Mapped[int] = mapped_column(
@@ -228,6 +297,9 @@ class ChatSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
         order_by="ChatExchange.message_id",
+    )
+    source_record: Mapped[SourceRecordTable] = relationship(
+        back_populates="chat_sessions"
     )
 
     def to_pydantic(self) -> ChatSessionRecord:

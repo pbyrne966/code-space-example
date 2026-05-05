@@ -26,6 +26,10 @@ def chat(
     answer_service = context.answer_service
     settings = context.settings
 
+    if settings is None:
+        rich_print("[red]Settings could not be built[/red]")
+        raise typer.Exit(code=1)
+
     if retriever is None:
         rich_print("[red]Retreiever could not be built[/red]")
         raise typer.Exit(code=1)

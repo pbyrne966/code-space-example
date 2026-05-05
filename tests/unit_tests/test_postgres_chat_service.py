@@ -5,15 +5,30 @@ from sqlalchemy.engine import Engine
 
 from src.db_service.data_types import ChatHistoryPair, ChatMessageRecord
 from src.db_service.postgres_controllers import PostgresChatService
-from src.db_service.schemas import ChatExchange, ChatSession
+from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
 
 
 class PostgresChatServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.engine: Engine = create_engine("sqlite:///:memory:")
+        SourceRecordTable.__table__.create(self.engine)
         ChatSession.__table__.create(self.engine)
         ChatExchange.__table__.create(self.engine)
         self.chat_service = PostgresChatService(self.engine)
+        with self.chat_service.session_factory() as session:
+            session.add(
+                SourceRecordTable(
+                    record_id="record-1",
+                    source_file="data/samples/convfinqa_dev_sample.json",
+                    record_index=0,
+                    split="dev",
+                    has_type2_question=False,
+                    has_duplicate_columns=False,
+                    has_non_numeric_values=False,
+                    num_dialogue_turns=1,
+                )
+            )
+            session.commit()
         self.chat_session = self.chat_service.create_session("record-1")
 
     def _record_turn(

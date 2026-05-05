@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk, SourceRecordMetadata
 
 from .data_types import (
     ChatHistoryPair,
@@ -19,12 +19,14 @@ from .mappers import (
     retrieval_chunk_from_table,
     retrieval_chunk_to_embedding_table,
     retrieval_chunk_to_table,
+    source_record_from_chunk,
 )
 from .schemas import (
     ChatExchange,
     ChatSession,
     ChunkEmbeddingTable,
     RetrievalChunkTable,
+    SourceRecordTable,
 )
 
 
@@ -86,6 +88,8 @@ class PostgresChatService(PostgresControllerContract):
     def create_session(self, record_id: str) -> ChatSessionRecord:
         query = ChatSession(record_id=record_id)
         with self.session_factory() as session:
+            if session.get(SourceRecordTable, record_id) is None:
+                raise ValueError(f"Source record does not exist: {record_id}")
             session.add(query)
             session.commit()
             session.refresh(query)
@@ -236,6 +240,13 @@ class PostgresChunkStore(ChunkStore):
     ) -> None:
         """Persist retrieval chunks."""
         with self.session_factory() as session:
+            chunks = list(chunks)
+            source_records = {
+                chunk.record_id: source_record_from_chunk(chunk) for chunk in chunks
+            }
+            for source_record in source_records.values():
+                session.merge(source_record)
+            session.flush()
             for chunk in chunks:
                 session.merge(retrieval_chunk_to_table(chunk))
                 session.merge(
@@ -310,3 +321,11 @@ class PostgresChunkStore(ChunkStore):
         with self.session_factory() as session:
             count = session.execute(statement).scalar_one()
             return count > 0
+
+    def get_source_record(self, record_id: str) -> SourceRecordMetadata | None:
+        """Fetch source record metadata by source record id."""
+        with self.session_factory() as session:
+            record = session.get(SourceRecordTable, record_id)
+            if record is None:
+                return None
+            return record.to_pydantic()

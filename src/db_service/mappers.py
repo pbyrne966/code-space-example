@@ -2,13 +2,42 @@
 
 from collections.abc import Callable
 
-from src.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk, SourceRecordMetadata
 
 from .schemas import (
     MAX_EMBEDDING_DIMENSION,
     ChunkEmbeddingTable,
     RetrievalChunkTable,
+    SourceRecordTable,
 )
+
+
+def source_record_from_chunk(chunk: RetrievalChunk) -> SourceRecordTable:
+    """Build source record metadata from a retrieval chunk."""
+    return SourceRecordTable(
+        record_id=chunk.record_id,
+        source_file=chunk.source_file,
+        record_index=chunk.record_index,
+        split=chunk.split,
+        has_type2_question=chunk.has_type2_question,
+        has_duplicate_columns=chunk.has_duplicate_columns,
+        has_non_numeric_values=chunk.has_non_numeric_values,
+        num_dialogue_turns=chunk.num_dialogue_turns,
+    )
+
+
+def source_record_to_table(record: SourceRecordMetadata) -> SourceRecordTable:
+    """Convert source record metadata into an ORM table object."""
+    return SourceRecordTable(
+        record_id=record.record_id,
+        source_file=record.source_file,
+        record_index=record.record_index,
+        split=record.split,
+        has_type2_question=record.has_type2_question,
+        has_duplicate_columns=record.has_duplicate_columns,
+        has_non_numeric_values=record.has_non_numeric_values,
+        num_dialogue_turns=record.num_dialogue_turns,
+    )
 
 
 def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
@@ -16,6 +45,7 @@ def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
     return RetrievalChunkTable(
         chunk_id=chunk.chunk_id,
         record_id=chunk.record_id,
+        source_file=chunk.source_file,
         record_index=chunk.record_index,
         chunk_index=chunk.chunk_index,
         split=chunk.split,

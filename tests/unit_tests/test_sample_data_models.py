@@ -20,6 +20,7 @@ from src.db_service.data_types import (
 from src.db_service.mappers import (
     retrieval_chunk_to_embedding_table,
     retrieval_chunk_to_table,
+    source_record_from_chunk,
 )
 from src.db_service.schemas import (
     MAX_EMBEDDING_DIMENSION,
@@ -27,6 +28,7 @@ from src.db_service.schemas import (
     ChatSession,
     ChunkEmbeddingTable,
     RetrievalChunkTable,
+    SourceRecordTable,
 )
 
 SAMPLE_DATA_DIR = Path("data/samples")
@@ -79,6 +81,7 @@ class SampleDataModelValidationTest(unittest.TestCase):
                         self.assertIsInstance(table_row, RetrievalChunkTable)
                         self.assertEqual(table_row.chunk_id, chunk.chunk_id)
                         self.assertEqual(table_row.record_id, record.id)
+                        self.assertEqual(table_row.source_file, chunk.source_file)
                         self.assertEqual(table_row.record_index, record_index)
                         self.assertEqual(table_row.chunk_index, chunk.chunk_index)
                         self.assertEqual(table_row.split, sample_payload["split"])
@@ -94,6 +97,14 @@ class SampleDataModelValidationTest(unittest.TestCase):
                         self.assertEqual(table_row.years, chunk.years)
                         self.assertIsInstance(table_row.to_pydantic(), RetrievalChunk)
                         self.assertEqual(table_row.to_pydantic(), chunk)
+
+                    source_record = source_record_from_chunk(chunks[0])
+                    self.assertIsInstance(source_record, SourceRecordTable)
+                    self.assertEqual(source_record.record_id, record.id)
+                    self.assertEqual(source_record.source_file, str(sample_file))
+                    self.assertEqual(source_record.record_index, record_index)
+                    self.assertEqual(source_record.split, sample_payload["split"])
+                    self.assertEqual(source_record.to_pydantic().record_id, record.id)
 
     def test_sample_records_convert_to_chunk_embedding_table_rows(self) -> None:
         sample_files = sorted(SAMPLE_DATA_DIR.glob("convfinqa_*_sample.json"))
