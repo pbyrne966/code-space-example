@@ -1,5 +1,6 @@
 import unittest
 
+from src.chunking_service.period_extraction import PeriodData
 from src.data_types import ChunkType, RetrievalChunk
 from src.db_service.data_types import RetrievedChunkRecord
 from src.rag_service import RagAnswer, RAGService
@@ -9,8 +10,16 @@ from tests.unit_tests.mock_ollama_client import MockOllamaClient
 class FakeRetriever:
     """Return a fixed retrieval result for RAG tests."""
 
-    def retrieve(self, query: str):
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, PeriodData | None]] = []
+
+    def retrieve(
+        self, query: str, record_id: str, period_data: PeriodData | None = None
+    ):
         """Return one deterministic retrieval row."""
+        if record_id != "record-1":
+            raise AssertionError(f"Unexpected record_id: {record_id}")
+        self.calls.append((query, record_id, period_data))
         chunk = RetrievalChunk(
             chunk_id="chunk-1",
             record_id="record-1",
@@ -57,19 +66,21 @@ class RagServiceTest(unittest.TestCase):
             model_name="test-model",
             chat_output='{"answer":"Revenue was 100.","citations":["chunk-1"]}',
         )
+        retriever = FakeRetriever()
         service = RAGService(
             model_client=model_client,
-            retriever=FakeRetriever(),
+            retriever=retriever,
         )
 
-        result = service.answer("What is revenue?")
+        result = service.answer("What was revenue on March 31, 2024?", "record-1")
 
         self.assertIsInstance(result, RagAnswer)
         self.assertEqual(result.answer, "Revenue was 100.")
         self.assertEqual(result.citations, ["chunk-1"])
         self.assertEqual(len(model_client.prompts), 1)
+        self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
-        repeat = service.answer("What is revenue?")
+        repeat = service.answer("What is revenue?", "record-1")
         self.assertEqual(repeat.answer, "Revenue was 100.")
         self.assertEqual(len(model_client.prompts), 2)
 
@@ -84,7 +95,7 @@ class RagServiceTest(unittest.TestCase):
         )
 
         with self.assertRaises(ValueError):
-            service.answer("What is revenue?")
+            service.answer("What is revenue?", "record-1")
 
 
 if __name__ == "__main__":

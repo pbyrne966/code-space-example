@@ -15,3 +15,11 @@ Feature: Postgres sample ingestion
     And I append a user question and assistant answer
     Then the chat session should track both messages
     And chat history should contain the user answer pair
+
+  Scenario: Period-filtered retrieval handles date combinations
+    Given a Postgres behaviour database is configured
+    And a raw ConvFinQA file built from period-rich records
+    When I run the period-rich process layer ingestion
+    Then retrieval by year and month should return matching chunks
+    And retrieval by quarter and month should return matching chunks
+    And retrieval by exact date should return matching chunks

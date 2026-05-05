@@ -1,15 +1,14 @@
 import json
 import os
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 from pytest_bdd import given, scenario, then, when
-from sqlalchemy import create_engine
 
 from scripts import setup_db
 from src.chunking_service.data_loader import ProcessLayer
-from src.config.settings import get_settings
+from src.chunking_service.period_extraction import PeriodData
+from src.config.settings import Settings, get_settings
 from src.db_service.data_types import (
     ChatHistoryPair,
     ChatSessionRecord,
@@ -17,6 +16,8 @@ from src.db_service.data_types import (
 )
 from src.db_service.postgres_controllers import PostgresChatService, PostgresChunkStore
 from src.db_service.schemas import MAX_EMBEDDING_DIMENSION, SourceRecordTable
+from src.model_service.models import ModelConfig
+from src.runtime import build_chat_service, build_db_engine, build_retriever
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 BDD_ENV_PATH = Path("tests/bdd_test/postgres_behaviour.env")
@@ -65,17 +66,23 @@ def test_chat_session_records_messages_after_sample_ingestion() -> None:
     """Run the Postgres chat session behaviour scenario."""
 
 
-@given("a Postgres behaviour database is configured", target_fixture="database_url")
-def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
+@scenario(
+    "postgres_ingestion.feature",
+    "Period-filtered retrieval handles date combinations",
+)
+def test_period_filtered_retrieval_handles_date_combinations() -> None:
+    """Run the Postgres period-filtered retrieval scenario."""
+
+
+@given("a Postgres behaviour database is configured", target_fixture="app_settings")
+def app_settings(monkeypatch: pytest.MonkeyPatch) -> Settings:
     """Configure the test process to use the behaviour Postgres database."""
     env_path = Path(os.getenv("BDD_ENV_PATH", BDD_ENV_PATH))
     env_path = _repo_path(env_path)
     _load_env_file(env_path, monkeypatch)
 
     if os.getenv("RUN_POSTGRES_BEHAVIOUR") != "1" or not _postgres_url():
-        pytest.skip(
-            "Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run"
-        )
+        pytest.skip("Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run")
 
     monkeypatch.setenv("POSTGRES_CONNECTION_URL", _postgres_url() or "")
     monkeypatch.setenv(
@@ -88,7 +95,8 @@ def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
     )
     get_settings.cache_clear()
     setup_db.main()
-    return _postgres_url() or ""
+    get_settings.cache_clear()
+    return get_settings()
 
 
 @given(
@@ -118,19 +126,74 @@ def sample_context(tmp_path: Path) -> dict[str, object]:
     }
 
 
+@given(
+    "a raw ConvFinQA file built from period-rich records",
+    target_fixture="period_context",
+)
+def period_context(tmp_path: Path) -> dict[str, object]:
+    """Write a ProcessLayer-compatible file with targeted period labels."""
+    record = {
+        "id": "period-rich-record",
+        "doc": {
+            "pre_text": "Period-rich test record.",
+            "post_text": ".",
+            "table": {
+                "three months ended March 31, 2024": {
+                    "revenue": 100.0,
+                    "operating income": 10.0,
+                },
+                "Q1 March 2024": {
+                    "revenue": 90.0,
+                    "operating income": 9.0,
+                },
+                "Q2 April 2024": {
+                    "revenue": 80.0,
+                    "operating income": 8.0,
+                },
+                "year ended December 31, 2023": {
+                    "revenue": 70.0,
+                    "operating income": 7.0,
+                },
+            },
+        },
+        "dialogue": {
+            "conv_questions": ["What was revenue?"],
+            "conv_answers": ["100.0"],
+            "turn_program": ["100.0"],
+            "executed_answers": [100.0],
+            "qa_split": [False],
+        },
+        "features": {
+            "num_dialogue_turns": 1,
+            "has_type2_question": False,
+            "has_duplicate_columns": False,
+            "has_non_numeric_values": False,
+        },
+    }
+    raw_payload = {
+        "train": [],
+        "dev": [record],
+        "test": [],
+    }
+    raw_path = tmp_path / "period_rich_convfinqa.json"
+    raw_path.write_text(json.dumps(raw_payload))
+
+    return {
+        "raw_path": raw_path,
+        "record_id": record["id"],
+    }
+
+
 @when("I run the process layer ingestion", target_fixture="ingestion_result")
 @given("the sample record has been ingested", target_fixture="ingestion_result")
 def ingestion_result(
-    database_url: str, sample_context: dict[str, object]
+    app_settings: Settings, sample_context: dict[str, object]
 ) -> dict[str, object]:
     """Run ProcessLayer against a real Postgres-backed chunk store."""
-    model_client = MockOllamaClient(model_name=f"behaviour-model-{uuid4()}")
-    store = PostgresChunkStore(
-        engine=create_engine(database_url),
-        embedding_fn=model_client.embed,
-        embedding_model=model_client.get_config().model_name,
-        top_k=3,
-    )
+    model_config = ModelConfig.load_from_toml(app_settings.model_config_path)
+    model_client = MockOllamaClient(model_name=model_config.model_name)
+    db_engine = build_db_engine(app_settings)
+    store = build_retriever(db_engine, model_client)
     process_layer = ProcessLayer(
         db_service=store,
         raw_file_src=sample_context["raw_path"],  # type: ignore[arg-type]
@@ -140,21 +203,50 @@ def ingestion_result(
     chunks = process_layer.process()
     return {
         "chunks": chunks,
+        "db_engine": db_engine,
         "model_client": model_client,
         "record_id": sample_context["record_id"],
         "store": store,
     }
 
 
+@when(
+    "I run the period-rich process layer ingestion",
+    target_fixture="period_ingestion_result",
+)
+def period_ingestion_result(
+    app_settings: Settings, period_context: dict[str, object]
+) -> dict[str, object]:
+    """Ingest the period-rich record into the real Postgres-backed chunk store."""
+    model_config = ModelConfig.load_from_toml(app_settings.model_config_path)
+    model_client = MockOllamaClient(model_name=model_config.model_name)
+    db_engine = build_db_engine(app_settings)
+    store = build_retriever(db_engine, model_client)
+    process_layer = ProcessLayer(
+        db_service=store,
+        raw_file_src=period_context["raw_path"],  # type: ignore[arg-type]
+        model_client=model_client,
+    )
+
+    chunks = process_layer.process()
+    return {
+        "chunks": chunks,
+        "model_client": model_client,
+        "record_id": period_context["record_id"],
+        "store": store,
+    }
+
+
 @when("I start a chat session for the sample record", target_fixture="chat_context")
 def chat_context(
-    database_url: str, ingestion_result: dict[str, object]
+    ingestion_result: dict[str, object]
 ) -> dict[str, object]:
     """Create or resume a chat session for the ingested record."""
     record_id = ingestion_result["record_id"]
+    db_engine = ingestion_result["db_engine"]
     assert isinstance(record_id, str)
 
-    chat_service = PostgresChatService(create_engine(database_url))
+    chat_service = build_chat_service(db_engine)  # type: ignore[arg-type]
     chat_session = chat_service.start_or_resume_session(record_id)
 
     return {
@@ -218,7 +310,7 @@ def vector_retrieval_should_return_chunks(ingestion_result: dict[str, object]) -
     assert isinstance(store, PostgresChunkStore)
     assert isinstance(chunks, list)
 
-    results = store.retrieve(chunks[0].text)
+    results = store.retrieve(chunks[0].text, chunks[0].record_id)
     persisted_chunk_ids = {chunk.chunk_id for chunk in chunks}
 
     assert results
@@ -227,6 +319,71 @@ def vector_retrieval_should_return_chunks(ingestion_result: dict[str, object]) -
     assert len(results[0].chunk.text) > 0
     assert store.embedding_fn is not None
     assert len(store.embedding_fn(chunks[0].text)) == MAX_EMBEDDING_DIMENSION
+
+
+@then("retrieval by year and month should return matching chunks")
+def retrieval_by_year_and_month_should_match(
+    period_ingestion_result: dict[str, object]
+) -> None:
+    """Assert year+month filters are both applied."""
+    store = period_ingestion_result["store"]
+    record_id = period_ingestion_result["record_id"]
+
+    assert isinstance(store, PostgresChunkStore)
+    assert isinstance(record_id, str)
+
+    results = store.retrieve(
+        "revenue March 2024",
+        record_id,
+        PeriodData(years=["2024"], months=[3]),
+    )
+
+    assert results
+    assert all("2024" in result.chunk.years for result in results)
+    assert all(3 in result.chunk.months for result in results)
+
+
+@then("retrieval by quarter and month should return matching chunks")
+def retrieval_by_quarter_and_month_should_match(
+    period_ingestion_result: dict[str, object]
+) -> None:
+    """Assert quarter+month filters are both applied."""
+    store = period_ingestion_result["store"]
+    record_id = period_ingestion_result["record_id"]
+
+    assert isinstance(store, PostgresChunkStore)
+    assert isinstance(record_id, str)
+
+    results = store.retrieve(
+        "revenue Q1 March",
+        record_id,
+        PeriodData(quarters=[1], months=[3]),
+    )
+
+    assert results
+    assert all(1 in result.chunk.quarters for result in results)
+    assert all(3 in result.chunk.months for result in results)
+
+
+@then("retrieval by exact date should return matching chunks")
+def retrieval_by_exact_date_should_match(
+    period_ingestion_result: dict[str, object]
+) -> None:
+    """Assert exact date filtering reaches day-level period metadata."""
+    store = period_ingestion_result["store"]
+    record_id = period_ingestion_result["record_id"]
+
+    assert isinstance(store, PostgresChunkStore)
+    assert isinstance(record_id, str)
+
+    results = store.retrieve(
+        "revenue March 31 2024",
+        record_id,
+        PeriodData(dates=["2024-03-31"]),
+    )
+
+    assert results
+    assert all("2024-03-31" in result.chunk.dates for result in results)
 
 
 @then("the chat session should track both messages")

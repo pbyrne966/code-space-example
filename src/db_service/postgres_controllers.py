@@ -3,10 +3,12 @@ from collections.abc import Callable, Iterable
 from typing import Protocol
 from uuid import UUID
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, literal, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from src.chunking_service.period_extraction import PeriodData
 from src.data_types import RetrievalChunk, SourceRecordMetadata
 
 from .data_types import (
@@ -56,13 +58,15 @@ class PostgresChatService(PostgresControllerContract):
     def setup(self):
         return
 
-    def get_cached(self, prompt: str) -> ChatMessageRecord | None:
+    def get_cached(self, prompt: str, record_id: str) -> ChatMessageRecord | None:
         hashed_question = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         with self.session_factory() as session:
             found = session.execute(
                 select(ChatExchange)
+                .join(ChatSession)
                 .where(
-                    (ChatExchange.hashed_content == hashed_question)
+                    (ChatSession.record_id == record_id)
+                    & (ChatExchange.hashed_content == hashed_question)
                     & (ChatExchange.role == "user")
                 )
                 .order_by(ChatExchange.created_at.desc())
@@ -277,6 +281,8 @@ class PostgresChunkStore(ChunkStore):
     def retrieve(
         self,
         query: str,
+        record_id: str,
+        period_data: PeriodData | None = None,
         embedding_fn: Callable[[str], list[float]] | None = None,
         embedding_model: str | None = None,
         top_k: int | None = None,
@@ -300,10 +306,14 @@ class PostgresChunkStore(ChunkStore):
                 RetrievalChunkTable,
                 RetrievalChunkTable.chunk_id == ChunkEmbeddingTable.chunk_id,
             )
-            .where(ChunkEmbeddingTable.embedding_model == embedding_model)
+            .where(
+                ChunkEmbeddingTable.embedding_model == embedding_model,
+                RetrievalChunkTable.record_id == record_id,
+            )
             .order_by("distance")
             .limit(top_k)
         )
+        stmt = self._apply_period_filters(stmt, period_data)
 
         with self.session_factory() as session:
             return [
@@ -313,6 +323,48 @@ class PostgresChunkStore(ChunkStore):
                 )
                 for row in session.execute(stmt).all()
             ]
+
+    def _apply_period_filters(self, statement, period_data: PeriodData | None):
+        if period_data is None:
+            return statement
+
+        filters = []
+        if period_data.dates:
+            filters.append(
+                self._jsonb_array_contains(RetrievalChunkTable.dates, period_data.dates)
+            )
+        else:
+            if period_data.years:
+                filters.append(
+                    self._jsonb_array_contains(
+                        RetrievalChunkTable.years, period_data.years
+                    )
+                )
+            if period_data.quarters:
+                filters.append(
+                    self._jsonb_array_contains(
+                        RetrievalChunkTable.quarters, period_data.quarters
+                    )
+                )
+            if period_data.months:
+                filters.append(
+                    self._jsonb_array_contains(
+                        RetrievalChunkTable.months, period_data.months
+                    )
+                )
+            if period_data.days:
+                filters.append(
+                    self._jsonb_array_contains(RetrievalChunkTable.days, period_data.days)
+                )
+
+        if filters:
+            return statement.where(*filters)
+
+        return statement
+
+    @staticmethod
+    def _jsonb_array_contains(column, values):
+        return column.op("@>")(literal(values, type_=JSONB))
 
     def has_data(self) -> bool:
         """Return whether any retrieval chunks exist for the active database."""

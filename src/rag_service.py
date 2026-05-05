@@ -1,5 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from src.chunking_service.period_extraction import extract_period_data
 from src.data_types import RetrievalChunk
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.model_service.models import ModelClient
@@ -65,8 +66,9 @@ Return JSON following this type:
                 f"Model output did not match RagAnswer schema: {exc}"
             ) from exc
 
-    def answer(self, question: str) -> RagAnswer:
-        results = self.retriever.retrieve(question)
+    def answer(self, question: str, record_id: str) -> RagAnswer:
+        period_data = extract_period_data([question])
+        results = self.retriever.retrieve(question, record_id, period_data)
         context_blocks = []
 
         for i, row in enumerate(results, start=1):

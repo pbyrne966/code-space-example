@@ -5,6 +5,8 @@ from rich import print as rich_print
 
 from src.logger import get_logger
 from src.runtime import build_context
+from src.rag_service import RagAnswer
+import json
 
 logger = get_logger("typer_logger")
 
@@ -57,25 +59,21 @@ def chat(
         if message.strip().lower() in {"exit", "quit"}:
             break
 
-        if (
-            settings.caching
-            and (cached := chat_service.get_cached(message))
-            and settings
-        ):
-            rich_print(f"[blue][bold]assistant:[/bold] {cached.content}[/blue]")
+        if settings.caching and (cached := chat_service.get_cached(message, record_id)):
+            response = RagAnswer(**json.loads(cached.content))
 
         else:
             user_chat_exchange = chat_service.record_user_message(
                 session.session_id, message
             )
-            response = answer_service.answer(message)
-            rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
-            if response.citations:
-                rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
-
+            response = answer_service.answer(message, record_id)
             chat_service.record_assistant_message(
                 session.session_id, response.model_dump_json(), user_chat_exchange
             )
+
+        rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
+        if response.citations:
+            rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
 
 
 if __name__ == "__main__":

@@ -83,7 +83,7 @@ class PostgresChatServiceTest(unittest.TestCase):
             answer='{"answer":"The linked assistant is returned.","citations":[]}',
         )
 
-        cached = self.chat_service.get_cached("What changed?")
+        cached = self.chat_service.get_cached("What changed?", "record-1")
 
         self.assertIsInstance(cached, ChatMessageRecord)
         self.assertEqual(cached.role, "assistant")
@@ -98,7 +98,7 @@ class PostgresChatServiceTest(unittest.TestCase):
             "No answer yet?",
         )
 
-        self.assertIsNone(self.chat_service.get_cached("No answer yet?"))
+        self.assertIsNone(self.chat_service.get_cached("No answer yet?", "record-1"))
 
     def test_get_cached_handles_duplicate_prompts_without_multiple_rows_error(
         self,
@@ -112,7 +112,7 @@ class PostgresChatServiceTest(unittest.TestCase):
             answer='{"answer":"Second answer.","citations":[]}',
         )
 
-        cached = self.chat_service.get_cached("Repeatable?")
+        cached = self.chat_service.get_cached("Repeatable?", "record-1")
 
         self.assertIsNotNone(cached)
         self.assertEqual(cached.role, "assistant")
