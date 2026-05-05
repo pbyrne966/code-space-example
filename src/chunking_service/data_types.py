@@ -92,7 +92,7 @@ class EmbeddedChunk(BaseModel):
 
 
 class ChunkRow(BaseModel):
-    """Flat storage representation for JSONL/SQLite/vector-store adapters."""
+    """Flat storage representation for JSONL/vector-store adapters."""
 
     chunk_id: str
     record_id: str

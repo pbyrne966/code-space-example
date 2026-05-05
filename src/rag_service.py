@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from src.db_service.schemas import PgVectorRetriever, RetrievalChunkTable
+from src.chunking_service.data_types import RetrievalChunk
+from src.db_service.postgres_controllers import PostgresChunkStore
 from src.model_service.models import ModelClient
 
 
@@ -12,13 +13,13 @@ class RagAnswer(BaseModel):
 
 
 class RAGService:
-    def __init__(self, model_client: ModelClient, retriever: PgVectorRetriever):
+    def __init__(self, model_client: ModelClient, retriever: PostgresChunkStore):
         self.model_client = model_client
         self.retriever = retriever
         self.model_config = self.model_client.get_config()
 
     def build_context_block(
-        self, index: int, chunk: RetrievalChunkTable, distance: float
+        self, index: int, chunk: RetrievalChunk, distance: float
     ) -> str:
         return f"""
 [Source {index}]
@@ -69,7 +70,7 @@ Return JSON following this type:
         context_blocks = []
 
         for i, row in enumerate(results, start=1):
-            chunk = row.RetrievalChunkTable
+            chunk = row.chunk
             distance = row.distance
             context_blocks.append(self.build_context_block(i, chunk, distance))
 

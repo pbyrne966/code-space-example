@@ -3,7 +3,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from src.db_service.postgres_chunk_store import ChunkStore
+from src.db_service.postgres_controllers import ChunkStore
 from src.model_service.models import ModelClient
 
 from .chunking import chunk_record

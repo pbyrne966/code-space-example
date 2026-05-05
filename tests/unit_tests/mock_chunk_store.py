@@ -3,7 +3,7 @@
 from collections.abc import Callable, Iterable
 
 from src.chunking_service.data_types import RetrievalChunk
-from src.db_service.postgres_chunk_store import ChunkStore
+from src.db_service.postgres_controllers import ChunkStore
 
 
 class MockChunkStore(ChunkStore):

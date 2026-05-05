@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.chunking_service.data_loader import ProcessLayer
-from src.db_service.postgres_chunk_store import PostgresChunkStore
+from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
 from src.runtime import build_context
 

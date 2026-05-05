@@ -12,6 +12,7 @@ dependencies = [
   "pydantic>=2.11.4",
   "pydantic-settings>=2.7.0",
   "psycopg[binary]>=3.2.3",
+  "pgvector>=0.3.6",
   "sqlalchemy>=2.0.36",
   "ruff>=0.11.10",
   "mypy>=1.15.0",

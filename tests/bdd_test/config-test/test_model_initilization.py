@@ -1,20 +1,20 @@
 from pathlib import Path
+import os
 
+import pytest
 from pytest_bdd import given, scenario, then, when
 
 from src.model_service.models import BaseModelFactory
 from tests.unit_tests.mock_settings import MockSettings
 
 
-@scenario(
-    "../features/model_initialization.feature", "Ollama Qwen model can initialize"
-)
+@scenario("model_initialization.feature", "Ollama Qwen model can initialize")
 def test_model_initialization():
     """Run the model initialization scenario."""
     pass
 
 
-@given("a model configuration file exists")
+@given("a model configuration file exists", target_fixture="model_config_path")
 def model_config_path():
     """Provide a stable model config path for the scenario."""
     settings = MockSettings()
@@ -24,9 +24,12 @@ def model_config_path():
     return path
 
 
-@when("I create the model client")
+@when("I create the model client", target_fixture="model_client")
 def model_client(model_config_path):
     """Create the Ollama model client using the sample config."""
+    if os.getenv("RUN_MODEL_INTEGRATION") != "1":
+        pytest.skip("Set RUN_MODEL_INTEGRATION=1 to run live model initialization")
+
     return BaseModelFactory.create(
         model_type="QWEN",
         model_config_path=model_config_path,

@@ -1,6 +1,7 @@
 import unittest
-from types import SimpleNamespace
 
+from src.chunking_service.data_types import ChunkType, RetrievalChunk
+from src.db_service.data_types import RetrievedChunkRecord
 from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
@@ -10,15 +11,23 @@ class FakeRetriever:
 
     def retrieve(self, query: str):
         """Return one deterministic retrieval row."""
-        chunk = SimpleNamespace(
+        chunk = RetrievalChunk(
             chunk_id="chunk-1",
             record_id="record-1",
+            record_index=0,
+            chunk_index=0,
+            split="train",
+            chunk_type=ChunkType.TABLE_METRIC,
             metric="revenue",
             years=["2024"],
             period_labels=["FY2024"],
             text="Revenue was 100.",
+            has_type2_question=False,
+            has_duplicate_columns=False,
+            has_non_numeric_values=False,
+            num_dialogue_turns=1,
         )
-        return [SimpleNamespace(RetrievalChunkTable=chunk, distance=0.12)]
+        return [RetrievedChunkRecord(chunk=chunk, distance=0.12)]
 
 
 class RagServiceTest(unittest.TestCase):

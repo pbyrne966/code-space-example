@@ -2,9 +2,13 @@
 
 from collections.abc import Callable
 
-from src.chunking_service.data_types import ChunkType, RetrievalChunk
+from src.chunking_service.data_types import RetrievalChunk
 
-from .schemas import ChunkEmbeddingTable, RetrievalChunkTable
+from .schemas import (
+    ChunkEmbeddingTable,
+    MAX_EMBEDDING_DIMENSION,
+    RetrievalChunkTable,
+)
 
 
 def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
@@ -37,30 +41,7 @@ def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
 
 def retrieval_chunk_from_table(row: RetrievalChunkTable) -> RetrievalChunk:
     """Convert an ORM retrieval chunk row back into a Pydantic model."""
-    return RetrievalChunk(
-        chunk_id=row.chunk_id,
-        record_id=row.record_id,
-        record_index=row.record_index,
-        chunk_index=row.chunk_index,
-        split=row.split,  # type: ignore[arg-type]
-        chunk_type=ChunkType(row.chunk_type),
-        text=row.text,
-        metric=row.metric,
-        matched_metrics=row.matched_metrics,
-        table_column=row.table_column,
-        turn_index=row.turn_index,
-        qa_split=row.qa_split,
-        years=row.years,
-        months=row.months,
-        quarters=row.quarters,
-        days=row.days,
-        dates=row.dates,
-        period_labels=row.period_labels,
-        has_type2_question=row.has_type2_question,
-        has_duplicate_columns=row.has_duplicate_columns,
-        has_non_numeric_values=row.has_non_numeric_values,
-        num_dialogue_turns=row.num_dialogue_turns,
-    )
+    return row.to_pydantic()
 
 
 def retrieval_chunk_to_embedding_table(
@@ -71,6 +52,11 @@ def retrieval_chunk_to_embedding_table(
     embedding = embedding_fn(chunk.text)
     if not embedding:
         raise ValueError("embedding_fn returned an empty embedding vector")
+    if len(embedding) != MAX_EMBEDDING_DIMENSION:
+        raise ValueError(
+            "embedding_fn returned an embedding vector with "
+            f"{len(embedding)} dimensions; expected {MAX_EMBEDDING_DIMENSION}"
+        )
 
     return ChunkEmbeddingTable(
         chunk_id=chunk.chunk_id,

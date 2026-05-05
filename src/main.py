@@ -22,10 +22,15 @@ def chat(
     """Open an interactive RAG chat session."""
     context = build_context()
     retriever = context.retriever
+    chat_service = context.chat_service
     answer_service = context.answer_service
 
     if retriever is None:
         rich_print("[red]Retreiever could not be built[/red]")
+        raise typer.Exit(code=1)
+
+    if chat_service is None:
+        rich_print("[red]Could not build chat service[/red]")
         raise typer.Exit(code=1)
 
     if answer_service is None:
@@ -38,21 +43,25 @@ def chat(
         )
         raise typer.Exit(code=2)
 
+    session = chat_service.start_or_resume_session(record_id)
+    rich_print(f"[dim]chat session: {session.session_id} for record: {record_id}[/dim]")
+
     while True:
         message = input(">>> ")
 
         if message.strip().lower() in {"exit", "quit"}:
             break
 
+        chat_service.record_user_message(session.session_id, message)
         response = answer_service.answer(message)
         rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
         if response.citations:
             rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
 
-
-def show_history(
-    record_id: str = typer.Argument(..., help="ID of the record to chat about"),
-): ...
+        chat_service.record_assistant_message(
+            session.session_id,
+            response.model_dump_json(),
+        )
 
 
 if __name__ == "__main__":

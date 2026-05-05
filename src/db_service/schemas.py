@@ -1,8 +1,9 @@
 """SQLAlchemy ORM schemas for chunk storage."""
 
-from collections.abc import Callable
 from datetime import datetime
+from uuid import uuid4
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -14,20 +15,21 @@ from sqlalchemy import (
     String,
     Text,
     func,
-    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import (
     DeclarativeBase,
     Mapped,
     mapped_column,
     relationship,
-    sessionmaker,
 )
 
+from src.chunking_service.data_types import ChunkType, EmbeddedChunk, RetrievalChunk
+from src.db_service.data_types import ChatMessageRecord, ChatSessionRecord
+
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
+MAX_EMBEDDING_DIMENSION = 896
 
 
 class Base(DeclarativeBase):
@@ -100,13 +102,36 @@ class RetrievalChunkTable(Base):
         cascade="all, delete-orphan",
     )
 
+    def to_pydantic(self) -> RetrievalChunk:
+        """Serialize the ORM row into the retrieval chunk read model."""
+        return RetrievalChunk(
+            chunk_id=self.chunk_id,
+            record_id=self.record_id,
+            record_index=self.record_index,
+            chunk_index=self.chunk_index,
+            split=self.split,  # type: ignore[arg-type]
+            chunk_type=ChunkType(self.chunk_type),
+            text=self.text,
+            metric=self.metric,
+            matched_metrics=self.matched_metrics,
+            table_column=self.table_column,
+            turn_index=self.turn_index,
+            qa_split=self.qa_split,
+            years=self.years,
+            months=self.months,
+            quarters=self.quarters,
+            days=self.days,
+            dates=self.dates,
+            period_labels=self.period_labels,
+            has_type2_question=self.has_type2_question,
+            has_duplicate_columns=self.has_duplicate_columns,
+            has_non_numeric_values=self.has_non_numeric_values,
+            num_dialogue_turns=self.num_dialogue_turns,
+        )
+
 
 class ChunkEmbeddingTable(Base):
-    """Embedding metadata linked to a retrieval chunk.
-
-    The vector column itself can be added once the embedding model and dimension are
-    fixed.
-    """
+    """Embedding metadata linked to a retrieval chunk."""
 
     __tablename__ = "chunk_embeddings"
     __table_args__ = (Index("ix_chunk_embeddings_model", "embedding_model"),)
@@ -118,7 +143,10 @@ class ChunkEmbeddingTable(Base):
 
     embedding_model: Mapped[str] = mapped_column(String, primary_key=True)
     embedding_dimension: Mapped[int] = mapped_column(Integer, nullable=False)
-    embedding: Mapped[list[float]] = mapped_column(JSON_TYPE, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(
+        Vector(MAX_EMBEDDING_DIMENSION),
+        nullable=False,
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -134,54 +162,17 @@ class ChunkEmbeddingTable(Base):
 
     chunk: Mapped[RetrievalChunkTable] = relationship(back_populates="embeddings")
 
-
-class PgVectorRetriever:
-    def __init__(
-        self,
-        engine: Engine,
-        embedding_fn: Callable[[str], list[float]],
-        embedding_model,
-        top_k: int = 6,
-    ) -> None:
-        self.engine = engine
-        self.session_factory = sessionmaker(bind=engine, expire_on_commit=False)
-        self.embedding_fn = embedding_fn
-        self.embedding_model = embedding_model
-        self.top_k = top_k
-
-    def retrieve(self, query: str):
-        query_embedding = self.embedding_fn(query)
-
-        stmt = (
-            select(
-                RetrievalChunkTable,
-                ChunkEmbeddingTable.embedding.cosine_distance(query_embedding).label(
-                    "distance"
-                ),
-            )
-            .join(
-                RetrievalChunkTable,
-                RetrievalChunkTable.chunk_id == ChunkEmbeddingTable.chunk_id,
-            )
-            .where(ChunkEmbeddingTable.embedding_model == self.embedding_model)
-            .order_by("distance")
-            .limit(self.top_k)
+    def to_pydantic(self) -> EmbeddedChunk:
+        """Serialize the ORM row into the embedded chunk read model."""
+        return EmbeddedChunk(
+            chunk=self.chunk.to_pydantic(),
+            embedding=list(self.embedding),
+            embedding_model=self.embedding_model,
         )
-
-        with self.session_factory() as session:
-            return session.execute(stmt).all()
-
-    def has_data(self) -> bool:
-        """Return whether any retrieval chunks exist for the active database."""
-        statement = select(func.count()).select_from(RetrievalChunkTable)
-
-        with self.session_factory() as session:
-            count = session.execute(statement).scalar_one()
-            return count > 0
 
 
 class ChatSession(Base):
-    """Chat session metadata for conversation persistence and compaction."""
+    """Chat session metadata for conversation persistence."""
 
     __tablename__ = "chat_sessions"
     __table_args__ = (
@@ -190,10 +181,20 @@ class ChatSession(Base):
             "last_message_index >= -1",
             name="ck_chat_sessions_last_message_index",
         ),
+        Index(
+            "ix_chat_sessions_record_last_message_at",
+            "record_id",
+            "last_message_at",
+        ),
         Index("ix_chat_sessions_last_message_at", "last_message_at"),
     )
 
-    session_id: Mapped[str] = mapped_column(String, primary_key=True)
+    session_id: Mapped[str] = mapped_column(
+        String,
+        primary_key=True,
+        default=lambda: str(uuid4()),
+    )
+    record_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     title: Mapped[str | None] = mapped_column(String, nullable=True)
 
     message_count: Mapped[int] = mapped_column(
@@ -211,6 +212,11 @@ class ChatSession(Base):
         server_default=func.now(),
         nullable=False,
     )
+    last_message_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -224,12 +230,30 @@ class ChatSession(Base):
         order_by="ChatExchange.message_id",
     )
 
+    def to_pydantic(self) -> ChatSessionRecord:
+        """Serialize the ORM row into the chat session read model."""
+        return ChatSessionRecord(
+            session_id=self.session_id,
+            record_id=self.record_id,
+            title=self.title,
+            message_count=self.message_count,
+            last_message_index=self.last_message_index,
+            created_at=self.created_at,
+            last_message_at=self.last_message_at,
+            updated_at=self.updated_at,
+            messages=[message.to_pydantic() for message in self.messages],
+        )
+
 
 class ChatExchange(Base):
     """Individual chat messages stored in append order."""
 
     __tablename__ = "chat_messages"
     __table_args__ = (
+        CheckConstraint(
+            "role IN ('user', 'assistant', 'system', 'tool')",
+            name="ck_chat_messages_role",
+        ),
         Index("ix_chat_messages_session_created_at", "session_id", "created_at"),
     )
 
@@ -241,6 +265,7 @@ class ChatExchange(Base):
         nullable=False,
         index=True,
     )
+    role: Mapped[str] = mapped_column(String, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -256,10 +281,13 @@ class ChatExchange(Base):
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")
 
-
-class ChatCompaction(Base):
-    __tablename__ = "chat_compactions"
-    __abstract__ = True
-
-
-ChatHistory = ChatSession
+    def to_pydantic(self) -> ChatMessageRecord:
+        """Serialize the ORM row into the chat message read model."""
+        return ChatMessageRecord(
+            message_id=self.message_id,
+            session_id=self.session_id,
+            role=self.role,
+            content=self.content,
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )

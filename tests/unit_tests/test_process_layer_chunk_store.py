@@ -66,7 +66,7 @@ class ProcessLayerChunkStoreTest(unittest.TestCase):
         self.assertEqual(stored_chunks[0].split, "train")
         self.assertIn(first_record_id, stored_chunks[0].text)
         self.assertEqual(
-            chunk_store.embeddings_by_chunk_id[stored_chunks[0].chunk_id],
+            chunk_store.embeddings_by_chunk_id[stored_chunks[0].chunk_id][:3],
             [
                 float(len(stored_chunks[0].text)),
                 float(len(stored_chunks[0].text) % 10),

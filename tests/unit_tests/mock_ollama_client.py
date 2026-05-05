@@ -1,5 +1,6 @@
 """Mock Ollama client for ingestion and RAG tests."""
 
+from src.db_service.schemas import MAX_EMBEDDING_DIMENSION
 from src.model_service.models import ModelClient, ModelConfig, ModelOutput
 
 
@@ -45,7 +46,11 @@ class MockOllamaClient(ModelClient):
 
     def embed(self, text: str) -> list[float]:
         self.embedded_texts.append(text)
-        return [float(len(text)), float(len(text) % 10), 1.0]
+        return [
+            float(len(text)),
+            float(len(text) % 10),
+            *([1.0] * (MAX_EMBEDDING_DIMENSION - 2)),
+        ]
 
     def query_batch(self, prompts: list[str]) -> list[ModelOutput]:
         """Run the mock single-query behavior across a prompt batch."""
