@@ -31,7 +31,7 @@ from src.data_types import (
     RetrievalChunk,
     SourceRecordMetadata,
 )
-from src.db_service.data_types import ChatMessageRecord, ChatSessionRecord
+from src.data_types import ChatMessageRecord, ChatSessionRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 MAX_EMBEDDING_DIMENSION = 896
