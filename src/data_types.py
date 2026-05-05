@@ -127,7 +127,6 @@ class RawDictRecords(BaseModel):
     test: list[dict[str, Any]]
 
 
-
 class RetrievedChunkRecord(BaseModel):
     """Serializable retrieval result row."""
 

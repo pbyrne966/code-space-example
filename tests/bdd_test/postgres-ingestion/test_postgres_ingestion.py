@@ -73,9 +73,7 @@ def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
     _load_env_file(env_path, monkeypatch)
 
     if os.getenv("RUN_POSTGRES_BEHAVIOUR") != "1" or not _postgres_url():
-        pytest.skip(
-            "Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run"
-        )
+        pytest.skip("Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run")
 
     monkeypatch.setenv("POSTGRES_CONNECTION_URL", _postgres_url() or "")
     monkeypatch.setenv(
