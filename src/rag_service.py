@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from src.chunking_service.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.model_service.models import ModelClient
 

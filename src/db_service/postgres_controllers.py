@@ -1,3 +1,4 @@
+import hashlib
 from collections.abc import Callable, Iterable
 from typing import Protocol
 from uuid import UUID
@@ -6,9 +7,14 @@ from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from src.chunking_service.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk
 
-from .data_types import ChatHistoryPair, ChatSessionRecord, RetrievedChunkRecord
+from .data_types import (
+    ChatHistoryPair,
+    ChatMessageRecord,
+    ChatSessionRecord,
+    RetrievedChunkRecord,
+)
 from .mappers import (
     retrieval_chunk_from_table,
     retrieval_chunk_to_embedding_table,
@@ -21,7 +27,6 @@ from .schemas import (
     RetrievalChunkTable,
 )
 
-import hashlib
 
 class PostgresControllerContract(Protocol):
     def has_data(self) -> bool: ...
@@ -49,10 +54,34 @@ class PostgresChatService(PostgresControllerContract):
     def setup(self):
         return
 
-    def _cache_key(self, prompt: str):
-        hashed_quistion = hashlib.sha256(prompt.encode("utf-8")).digest()
+    def get_cached(self, prompt: str) -> ChatMessageRecord | None:
+        hashed_question = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         with self.session_factory() as session:
-            select(ChatExchange)
+            found = session.execute(
+                select(ChatExchange)
+                .where(
+                    (ChatExchange.hashed_content == hashed_question)
+                    & (ChatExchange.role == "user")
+                )
+                .order_by(ChatExchange.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+            if found is None:
+                return None
+
+            answer = session.execute(
+                select(ChatExchange)
+                .where(
+                    (ChatExchange.linked_message_id == found.message_id)
+                    & (ChatExchange.role == "assistant")
+                )
+                .order_by(ChatExchange.created_at.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if answer is None:
+                return None
+            return answer.to_pydantic()
 
     def create_session(self, record_id: str) -> ChatSessionRecord:
         query = ChatSession(record_id=record_id)
@@ -77,13 +106,27 @@ class PostgresChatService(PostgresControllerContract):
             session = self.create_session(record_id)
         return session
 
-    def append_message(self, role: str, session_id: UUID | str, content: str) -> None:
+    def append_message(
+        self,
+        role: str,
+        session_id: UUID | str,
+        content: str,
+        linked_message: ChatMessageRecord | None = None,
+    ) -> ChatMessageRecord:
         session_id_str = str(session_id)
         with self.session_factory() as session:
-            session.add(
-                ChatExchange(session_id=session_id_str, role=role, content=content)
+            hashed_content = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            linked_msg_id = (
+                linked_message.message_id if linked_message is not None else None
             )
-
+            chat_exchange = ChatExchange(
+                session_id=session_id_str,
+                role=role,
+                content=content,
+                hashed_content=hashed_content,
+                linked_message_id=linked_msg_id,
+            )
+            session.add(chat_exchange)
             session.execute(
                 update(ChatSession)
                 .where(ChatSession.session_id == session_id_str)
@@ -94,15 +137,23 @@ class PostgresChatService(PostgresControllerContract):
                 )
             )
             session.commit()
+            session.refresh(chat_exchange)
+            return chat_exchange.to_pydantic()
 
     def start_or_resume_session(self, record_id: str) -> ChatSessionRecord:
         return self.get_or_create_session(record_id)
 
-    def record_user_message(self, session_id: UUID | str, content: str) -> None:
-        self.append_message("user", session_id, content)
+    def record_user_message(
+        self,
+        session_id: UUID | str,
+        content: str,
+    ) -> ChatMessageRecord:
+        return self.append_message("user", session_id, content)
 
-    def record_assistant_message(self, session_id: UUID | str, content: str) -> None:
-        self.append_message("assistant", session_id, content)
+    def record_assistant_message(
+        self, session_id: UUID | str, content: str, linked_message: ChatMessageRecord
+    ) -> None:
+        self.append_message("assistant", session_id, content, linked_message)
 
     def show_history(
         self, session_id: UUID | str, limit: int = 10
@@ -120,28 +171,33 @@ class PostgresChatService(PostgresControllerContract):
             .limit(lim_each)
         )
 
-        assistant_answers = (
-            select(ChatExchange)
-            .where(
-                (ChatExchange.session_id == session_id_str)
-                & (ChatExchange.role == "assistant")
-            )
-            .order_by(ChatExchange.created_at.desc())
-            .limit(lim_each)
-        )
-
         with self.session_factory() as session:
-            user = session.execute(user_messages).scalars().all()
-            assistant = session.execute(assistant_answers).scalars().all()
-            together = [
-                ChatHistoryPair(
-                    user_question=user_item.to_pydantic(),
-                    assistant=assistant_item.to_pydantic(),
+            users = session.execute(user_messages).scalars().all()
+            user_ids = [user.message_id for user in users]
+            assistants = (
+                session.execute(
+                    select(ChatExchange)
+                    .where(
+                        (ChatExchange.linked_message_id.in_(user_ids))
+                        & (ChatExchange.role == "assistant")
+                    )
+                    .order_by(ChatExchange.created_at.desc())
                 )
-                for user_item, assistant_item in zip(user, assistant)
-            ]
+                .scalars()
+                .all()
+            )
+            assistant_by_user_id = {
+                assistant.linked_message_id: assistant for assistant in assistants
+            }
 
-            return together
+            return [
+                ChatHistoryPair(
+                    user_question=user.to_pydantic(),
+                    assistant=assistant.to_pydantic(),
+                )
+                for user in users
+                if (assistant := assistant_by_user_id.get(user.message_id)) is not None
+            ]
 
     def has_data(self) -> bool:
         statement = select(func.count()).select_from(ChatExchange)

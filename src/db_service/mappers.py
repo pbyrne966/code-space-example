@@ -2,11 +2,11 @@
 
 from collections.abc import Callable
 
-from src.chunking_service.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk
 
 from .schemas import (
-    ChunkEmbeddingTable,
     MAX_EMBEDDING_DIMENSION,
+    ChunkEmbeddingTable,
     RetrievalChunkTable,
 )
 

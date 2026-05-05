@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from src.chunking_service.chunking import chunk_record
-from src.chunking_service.data_types import (
+from src.data_types import (
     ConvFinQARecord,
     EmbeddedChunk,
     RetrievalChunk,
@@ -22,10 +22,10 @@ from src.db_service.mappers import (
     retrieval_chunk_to_table,
 )
 from src.db_service.schemas import (
+    MAX_EMBEDDING_DIMENSION,
     ChatExchange,
     ChatSession,
     ChunkEmbeddingTable,
-    MAX_EMBEDDING_DIMENSION,
     RetrievalChunkTable,
 )
 

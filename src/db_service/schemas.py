@@ -25,7 +25,7 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-from src.chunking_service.data_types import ChunkType, EmbeddedChunk, RetrievalChunk
+from src.data_types import ChunkType, EmbeddedChunk, RetrievalChunk
 from src.db_service.data_types import ChatMessageRecord, ChatSessionRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
@@ -267,6 +267,12 @@ class ChatExchange(Base):
     )
     role: Mapped[str] = mapped_column(String, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    hashed_content: Mapped[str] = mapped_column(String(64), nullable=False)
+    linked_message_id: Mapped[int | None] = mapped_column(
+        ForeignKey("chat_messages.message_id"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -277,6 +283,17 @@ class ChatExchange(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    linked_message: Mapped["ChatExchange | None"] = relationship(
+        foreign_keys=[linked_message_id],
+        remote_side=[message_id],
+        back_populates="linked_messages",
+    )
+
+    linked_messages: Mapped[list["ChatExchange"]] = relationship(
+        foreign_keys=[linked_message_id],
+        back_populates="linked_message",
     )
 
     session: Mapped[ChatSession] = relationship(back_populates="messages")

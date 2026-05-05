@@ -7,7 +7,8 @@ from typing import (
     Any,
 )
 
-from .data_types import ChunkType, ConvFinQARecord, RetrievalChunk, SplitName
+from src.data_types import ChunkType, ConvFinQARecord, RetrievalChunk, SplitName
+
 from .period_extraction import extract_period_data
 
 NormalizedMetric = tuple[str, str]

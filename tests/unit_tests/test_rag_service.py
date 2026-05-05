@@ -1,6 +1,6 @@
 import unittest
 
-from src.chunking_service.data_types import ChunkType, RetrievalChunk
+from src.data_types import ChunkType, RetrievalChunk
 from src.db_service.data_types import RetrievedChunkRecord
 from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient

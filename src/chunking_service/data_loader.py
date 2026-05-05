@@ -3,16 +3,16 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from src.db_service.postgres_controllers import ChunkStore
-from src.model_service.models import ModelClient
-
-from .chunking import chunk_record
-from .data_types import (
+from src.data_types import (
     ConvFinQARecord,
     RawDictRecords,
     RetrievalChunk,
     SplitName,
 )
+from src.db_service.postgres_controllers import ChunkStore
+from src.model_service.models import ModelClient
+
+from .chunking import chunk_record
 
 
 class ProcessLayer:

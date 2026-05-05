@@ -1,4 +1,4 @@
-"""Pydantic models for the ConvFinQA embedding pipeline."""
+"""Shared Pydantic models for source data, chunking, and retrieval."""
 
 from enum import Enum
 from typing import Any, Literal

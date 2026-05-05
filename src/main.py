@@ -24,6 +24,7 @@ def chat(
     retriever = context.retriever
     chat_service = context.chat_service
     answer_service = context.answer_service
+    settings = context.settings
 
     if retriever is None:
         rich_print("[red]Retreiever could not be built[/red]")
@@ -52,16 +53,25 @@ def chat(
         if message.strip().lower() in {"exit", "quit"}:
             break
 
-        chat_service.record_user_message(session.session_id, message)
-        response = answer_service.answer(message)
-        rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
-        if response.citations:
-            rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
+        if (
+            settings.caching
+            and (cached := chat_service.get_cached(message))
+            and settings
+        ):
+            rich_print(f"[blue][bold]assistant:[/bold] {cached.content}[/blue]")
 
-        chat_service.record_assistant_message(
-            session.session_id,
-            response.model_dump_json(),
-        )
+        else:
+            user_chat_exchange = chat_service.record_user_message(
+                session.session_id, message
+            )
+            response = answer_service.answer(message)
+            rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
+            if response.citations:
+                rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
+
+            chat_service.record_assistant_message(
+                session.session_id, response.model_dump_json(), user_chat_exchange
+            )
 
 
 if __name__ == "__main__":

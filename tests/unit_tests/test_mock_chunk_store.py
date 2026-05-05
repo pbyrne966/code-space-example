@@ -1,6 +1,6 @@
 import unittest
 
-from src.chunking_service.data_types import ChunkType, RetrievalChunk
+from src.data_types import ChunkType, RetrievalChunk
 from tests.unit_tests.mock_chunk_store import MockChunkStore
 
 

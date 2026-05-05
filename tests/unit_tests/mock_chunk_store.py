@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Iterable
 
-from src.chunking_service.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk
 from src.db_service.postgres_controllers import ChunkStore
 
 

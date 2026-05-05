@@ -4,7 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from src.chunking_service.data_types import RetrievalChunk
+from src.data_types import RetrievalChunk
 
 
 class RetrievedChunkRecord(BaseModel):

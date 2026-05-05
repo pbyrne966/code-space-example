@@ -21,9 +21,7 @@ from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 
 def _postgres_url() -> str | None:
-    return os.getenv("POSTGRES_BEHAVIOUR_URL") or os.getenv(
-        "POSTGRES_CONNECTION_URL"
-    )
+    return os.getenv("POSTGRES_BEHAVIOUR_URL") or os.getenv("POSTGRES_CONNECTION_URL")
 
 
 @scenario(
@@ -46,13 +44,13 @@ def test_chat_session_records_messages_after_sample_ingestion() -> None:
 def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
     """Configure the test process to use the behaviour Postgres database."""
     if os.getenv("RUN_POSTGRES_BEHAVIOUR") != "1" or not _postgres_url():
-        pytest.skip(
-            "Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run"
-        )
+        pytest.skip("Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run")
 
     repo_root = Path(__file__).resolve().parents[3]
     monkeypatch.setenv("POSTGRES_CONNECTION_URL", _postgres_url() or "")
-    monkeypatch.setenv("MODEL_CONFIG_PATH", str(repo_root / "configs/model_config.toml"))
+    monkeypatch.setenv(
+        "MODEL_CONFIG_PATH", str(repo_root / "configs/model_config.toml")
+    )
     monkeypatch.setenv("RAW_DATA_PATH", str(repo_root / "data/convfinqa_dataset.json"))
     get_settings.cache_clear()
     setup_db.main()
@@ -111,7 +109,9 @@ def ingestion_result(
 
 
 @when("I start a chat session for the sample record", target_fixture="chat_context")
-def chat_context(database_url: str, ingestion_result: dict[str, object]) -> dict[str, object]:
+def chat_context(
+    database_url: str, ingestion_result: dict[str, object]
+) -> dict[str, object]:
     """Create or resume a chat session for the ingested record."""
     record_id = ingestion_result["record_id"]
     assert isinstance(record_id, str)
@@ -135,13 +135,14 @@ def append_chat_messages(chat_context: dict[str, object]) -> None:
     assert isinstance(chat_service, PostgresChatService)
     assert isinstance(chat_session, ChatSessionRecord)
 
-    chat_service.record_user_message(
+    user_message = chat_service.record_user_message(
         chat_session.session_id,
         "What was the important sample fact?",
     )
     chat_service.record_assistant_message(
         chat_session.session_id,
         '{"answer":"The sample was ingested.","citations":[]}',
+        user_message,
     )
 
 

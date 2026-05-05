@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     postgres_port: int = Field(validation_alias="POSTGRES_PORT")
     postgres_db: str = Field(validation_alias="POSTGRES_DB")
     postgres_user: str = Field(validation_alias="POSTGRES_USER")
+    cached: bool = Field(validation_alias="CACHING_ON", default=False)
     postgres_password: str = Field(
         validation_alias="POSTGRES_PASSWORD",
     )
