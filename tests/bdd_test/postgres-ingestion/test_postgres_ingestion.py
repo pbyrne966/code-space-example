@@ -19,9 +19,34 @@ from src.db_service.postgres_controllers import PostgresChatService, PostgresChu
 from src.db_service.schemas import MAX_EMBEDDING_DIMENSION
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
+BDD_ENV_PATH = Path("tests/bdd_test/postgres_behaviour.env")
+BDD_MODEL_CONFIG_PATH = Path("configs/model_config.bdd.toml")
+BDD_SAMPLE_DATA_PATH = Path("data/samples/convfinqa_dev_sample.json")
+
+
+def _load_env_file(path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    if not path.exists():
+        return
+
+    for line in path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+
+        key, value = stripped.split("=", 1)
+        if key not in os.environ:
+            monkeypatch.setenv(key, value)
+
 
 def _postgres_url() -> str | None:
     return os.getenv("POSTGRES_BEHAVIOUR_URL") or os.getenv("POSTGRES_CONNECTION_URL")
+
+
+def _repo_path(path: str | Path) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return Path(__file__).resolve().parents[3] / candidate
 
 
 @scenario(
@@ -43,15 +68,24 @@ def test_chat_session_records_messages_after_sample_ingestion() -> None:
 @given("a Postgres behaviour database is configured", target_fixture="database_url")
 def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
     """Configure the test process to use the behaviour Postgres database."""
-    if os.getenv("RUN_POSTGRES_BEHAVIOUR") != "1" or not _postgres_url():
-        pytest.skip("Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run")
+    env_path = Path(os.getenv("BDD_ENV_PATH", BDD_ENV_PATH))
+    env_path = _repo_path(env_path)
+    _load_env_file(env_path, monkeypatch)
 
-    repo_root = Path(__file__).resolve().parents[3]
+    if os.getenv("RUN_POSTGRES_BEHAVIOUR") != "1" or not _postgres_url():
+        pytest.skip(
+            "Set RUN_POSTGRES_BEHAVIOUR=1 and POSTGRES_BEHAVIOUR_URL to run"
+        )
+
     monkeypatch.setenv("POSTGRES_CONNECTION_URL", _postgres_url() or "")
     monkeypatch.setenv(
-        "MODEL_CONFIG_PATH", str(repo_root / "configs/model_config.toml")
+        "MODEL_CONFIG_PATH",
+        str(_repo_path(os.getenv("MODEL_CONFIG_PATH", str(BDD_MODEL_CONFIG_PATH)))),
     )
-    monkeypatch.setenv("RAW_DATA_PATH", str(repo_root / "data/convfinqa_dataset.json"))
+    monkeypatch.setenv(
+        "RAW_DATA_PATH",
+        str(_repo_path(os.getenv("RAW_DATA_PATH", str(BDD_SAMPLE_DATA_PATH)))),
+    )
     get_settings.cache_clear()
     setup_db.main()
     return _postgres_url() or ""
@@ -63,14 +97,16 @@ def database_url(monkeypatch: pytest.MonkeyPatch) -> str:
 )
 def sample_context(tmp_path: Path) -> dict[str, object]:
     """Write a ProcessLayer-compatible raw input file from a sample record."""
-    sample_path = Path("data/samples/convfinqa_train_sample.json")
+    sample_path = _repo_path(os.getenv("BDD_SAMPLE_DATA_PATH", BDD_SAMPLE_DATA_PATH))
     sample_payload = json.loads(sample_path.read_text())
+    split = sample_payload["split"]
     record = sample_payload["records"][0]
     raw_payload = {
-        "train": [record],
+        "train": [],
         "dev": [],
         "test": [],
     }
+    raw_payload[split] = [record]
     raw_path = tmp_path / "one_record_convfinqa.json"
     raw_path.write_text(json.dumps(raw_payload))
 
