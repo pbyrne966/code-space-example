@@ -89,49 +89,6 @@ def _table_values_for_metric(
         for table_column, value in column_values.items()
     ]
 
-
-def _split_sentences(text: str) -> list[str]:
-    return [
-        sentence.strip()
-        for sentence in SENTENCE_BOUNDARY_RE.split(text)
-        if sentence.strip()
-    ]
-
-
-def chunk_via_sentence_window(
-    given_text: str, window_size: int = 3, stride: int = 2
-) -> list[TextWindow]:
-    sentences = _split_sentences(given_text)
-    if not sentences:
-        stripped_text = given_text.strip()
-        if not stripped_text:
-            return []
-
-        return [
-            TextWindow(
-                text=stripped_text,
-                start_sentence=0,
-                end_sentence=0,
-            )
-        ]
-
-    windows: list[TextWindow] = []
-    for start_index in range(0, len(sentences), stride):
-        window_sentences = sentences[start_index : start_index + window_size]
-        if not window_sentences:
-            continue
-        windows.append(
-            TextWindow(
-                text=" ".join(window_sentences),
-                start_sentence=start_index,
-                end_sentence=start_index + len(window_sentences) - 1,
-            )
-        )
-        if start_index + window_size >= len(sentences):
-            break
-    return windows
-
-
 def _normalize_metric_text(text: str) -> str:
     return NON_WORD_RE.sub(" ", text.lower()).strip()
 
