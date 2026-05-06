@@ -3,7 +3,7 @@ import unittest
 from src.aggregator_service.query_intent import TableValueCandidate
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
-from src.rag_service import RagAnswer, RAGService, RawRagAnswer
+from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 LOOKUP_ANSWER = '{"answer":"100","citations":["chunk-1"],"calculation_program":null}'
@@ -82,32 +82,22 @@ class RagServiceTest(unittest.TestCase):
 
         self.assertIn("Output a single JSON object only.", prompt)
         self.assertIn('"calculation_program": null', prompt)
-        self.assertIn("Calculation program schema:", prompt)
-        self.assertIn("Available table values for calculation:", prompt)
-        self.assertIn('"value_id": "chunk-1:value:0"', prompt)
-        self.assertIn(
-            "value_id to one exact value_id from available_table_values",
-            prompt,
-        )
         self.assertIn(
             "Return exactly these keys: answer, citations, calculation_program.",
             prompt,
         )
-        self.assertIn("answer must be a scalar ConvFinQA-style answer only", prompt)
+        self.assertIn("answer must be only the value, not a sentence.", prompt)
         self.assertIn('"answer": "100"', prompt)
-        self.assertIn('"answer": "14.1%"', prompt)
         self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
         )
         self.assertIn(
-            "For direct lookup or text answers, set calculation_program to null.",
+            "calculation_program must always be null.",
             prompt,
         )
-        self.assertIn(
-            "Do not create lookup calculation steps for direct lookup answers.",
-            prompt,
-        )
+        self.assertNotIn("Calculation program schema:", prompt)
+        self.assertNotIn("Available table values for calculation:", prompt)
 
     def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
@@ -127,19 +117,10 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(result.citations, ["chunk-1"])
         self.assertIsNone(result.turn_program)
         self.assertEqual(len(model_client.prompts), 1)
-        value_id_schema = model_client.response_formats[0]["$defs"]["Operand"][
-            "properties"
-        ]["value_id"]
         self.assertEqual(
-            value_id_schema["anyOf"][0]["enum"],
-            ["chunk-1:value:0", "chunk-1:value:1"],
+            model_client.response_formats[0]["properties"]["calculation_program"],
+            {"type": "null"},
         )
-
-        operation_enum = model_client.response_formats[0]["$defs"][
-            "CalculationStep"
-        ]["properties"]["operation"]["enum"]
-        self.assertNotIn("lookup", operation_enum)
-        self.assertIn("subtract", operation_enum)
         self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
         repeat = service.answer("What is revenue?", "record-1")
@@ -184,7 +165,7 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(candidates[1].value_id, "chunk-1:value:1")
         self.assertEqual(candidates[1].numeric_value, 50.0)
 
-    def test_response_format_restricts_table_value_ids(self) -> None:
+    def test_response_format_forces_null_calculation_program(self) -> None:
         service = RAGService(
             model_client=MockOllamaClient(model_name="test-model"),
             retriever=FakeRetriever(),
@@ -194,20 +175,11 @@ class RagServiceTest(unittest.TestCase):
         )
 
         response_format = service.build_response_format(candidates)
-        value_id_schema = response_format["$defs"]["Operand"]["properties"][
-            "value_id"
-        ]
 
         self.assertEqual(
-            value_id_schema["anyOf"][0]["enum"],
-            ["chunk-1:value:0", "chunk-1:value:1"],
+            response_format["properties"]["calculation_program"],
+            {"type": "null"},
         )
-
-        operation_enum = response_format["$defs"]["CalculationStep"]["properties"][
-            "operation"
-        ]["enum"]
-        self.assertNotIn("lookup", operation_enum)
-        self.assertIn("subtract", operation_enum)
 
     def test_answer_keeps_calculated_scalar_answer(self) -> None:
         model_client = MockOllamaClient(

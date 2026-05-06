@@ -1,5 +1,4 @@
 import json
-from copy import deepcopy
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -83,6 +82,15 @@ table_values: {json.dumps(table_values)}
 
         return candidates
 
+    def build_response_format(
+        self,
+        table_value_candidates: list[TableValueCandidate],
+    ) -> dict:
+        response_format = RawRagAnswer.model_json_schema()
+        response_format["properties"]["calculation_program"] = {"type": "null"}
+        response_format["required"] = ["answer", "calculation_program"]
+        return response_format
+
     def build_prompt(
         self,
         question: str,
@@ -90,68 +98,25 @@ table_values: {json.dumps(table_values)}
         table_value_candidates: list[TableValueCandidate] | None = None,
     ) -> str:
         context_string = "\n\n---\n\n".join(context)
-        candidate_payload = [
-            candidate.model_dump() for candidate in table_value_candidates or []
-        ]
-        calculation_program_schema = json.dumps(
-            CalculationProgram.model_json_schema(),
-            indent=2,
-        )
         return f"""
-You are answering using only the provided retrieved context.
+You answer financial table questions using only the retrieved context.
 
 Rules:
 - Output a single JSON object only.
 - Do not wrap the output in markdown or extra prose.
+- Return exactly these keys: answer, citations, calculation_program.
+- If the question asks for a value in a specific year, copy the matching value from the context.
+- answer must be only the value, not a sentence.
+- citations must contain the chunk_id that supports the answer.
 - If the answer is not in the context, set answer to "I don't know".
 - Do not invent numbers.
-- Return exactly these keys: answer, citations, calculation_program.
-- answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
-- Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
-- citations must be a JSON array of chunk_id values used to support the answer.
-- For direct lookup or text answers, set calculation_program to null.
-- Use calculation_program only when arithmetic is required.
-- Do not create lookup calculation steps for direct lookup answers.
-- When arithmetic is required, return a non-null calculation_program using only available_table_values or literal numbers from the question.
-- For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
-- For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
-- Be concise and precise.
+- calculation_program must always be null.
 
-Calculation program schema:
-{calculation_program_schema}
-
-Available table values for calculation:
-{json.dumps(candidate_payload, indent=2)}
-
-No-calculation response example:
+Response example:
 {{
   "answer": "100",
   "citations": ["chunk_id_1"],
   "calculation_program": null
-}}
-
-Calculation response example:
-{{
-  "answer": "14.1%",
-  "citations": ["chunk_id_1"],
-  "calculation_program": {{
-    "steps": [
-      {{
-        "operation": "subtract",
-        "operands": [
-          {{"kind": "table_value", "value_id": "chunk_id_1:value:0"}},
-          {{"kind": "table_value", "value_id": "chunk_id_1:value:1"}}
-        ]
-      }},
-      {{
-        "operation": "divide",
-        "operands": [
-          {{"kind": "step_result", "step_index": 0}},
-          {{"kind": "table_value", "value_id": "chunk_id_1:value:1"}}
-        ]
-      }}
-    ]
-  }}
 }}
 
 Question:
@@ -167,35 +132,6 @@ Retrieved context:
         except ValidationError:
             logger.warning("Model returned invalid RawRagAnswer JSON: %s", output)
             raise
-
-    def build_response_format(
-        self,
-        table_value_candidates: list[TableValueCandidate],
-    ) -> dict:
-        response_format = deepcopy(RawRagAnswer.model_json_schema())
-        response_format["$defs"]["CalculationStep"]["properties"]["operation"][
-            "enum"
-        ] = [
-            operation
-            for operation in response_format["$defs"]["CalculationStep"][
-                "properties"
-            ]["operation"]["enum"]
-            if operation != "lookup"
-        ]
-
-        value_ids = [candidate.value_id for candidate in table_value_candidates]
-        if not value_ids:
-            return response_format
-
-        response_format["$defs"]["Operand"]["properties"]["value_id"] = {
-            "anyOf": [
-                {"type": "string", "enum": value_ids},
-                {"type": "null"},
-            ],
-            "default": None,
-            "title": "Value Id",
-        }
-        return response_format
 
     def build_final_answer(
         self,
