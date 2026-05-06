@@ -2,8 +2,14 @@ import unittest
 
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
+from src.aggregator_service.query_intent import TableValueCandidate
 from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
+
+LOOKUP_ANSWER = (
+    '{"answer":"Revenue was 100.","citations":["chunk-1"],'
+    '"calculation_program":null}'
+)
 
 
 class FakeRetriever:
@@ -27,6 +33,20 @@ class FakeRetriever:
             split="train",
             chunk_type=ChunkType.TABLE_METRIC,
             metric="revenue",
+            table_values=[
+                {
+                    "metric": "revenue",
+                    "table_column": "FY2024",
+                    "value": 100.0,
+                    "numeric_value": 100.0,
+                },
+                {
+                    "metric": "revenue",
+                    "table_column": "FY2023",
+                    "value": 50.0,
+                    "numeric_value": 50.0,
+                },
+            ],
             years=["2024"],
             period_labels=["FY2024"],
             text="Revenue was 100.",
@@ -42,18 +62,39 @@ class RagServiceTest(unittest.TestCase):
     def test_build_prompt_requests_json_only(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
-            chat_output='{"answer":"ok","citations":[]}',
+            chat_output='{"answer":"ok","citations":[],"calculation_program":null}',
         )
         service = RAGService(
             model_client=model_client,
             retriever=FakeRetriever(),
         )
 
-        prompt = service.build_prompt("What is revenue?", ["[Source 1] example"])
+        prompt = service.build_prompt(
+            "What is revenue?",
+            ["[Source 1] example"],
+            [
+                TableValueCandidate(
+                    value_id="chunk-1:value:0",
+                    chunk_id="chunk-1",
+                    metric="revenue",
+                    table_column="FY2024",
+                    numeric_value=100.0,
+                )
+            ],
+        )
 
         self.assertIn("Output a single JSON object only.", prompt)
+        self.assertIn('"calculation_program": null', prompt)
+        self.assertIn("Calculation program schema:", prompt)
+        self.assertIn("Available table values for calculation:", prompt)
+        self.assertIn('"value_id": "chunk-1:value:0"', prompt)
         self.assertIn(
-            '{"answer":"...","citations":["chunk_id_1","chunk_id_2"]}', prompt
+            'value_id to one exact value_id from available_table_values',
+            prompt,
+        )
+        self.assertIn(
+            "Return exactly these keys: answer, citations, calculation_program.",
+            prompt,
         )
         self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
@@ -63,7 +104,7 @@ class RagServiceTest(unittest.TestCase):
     def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
-            chat_output='{"answer":"Revenue was 100.","citations":["chunk-1"]}',
+            chat_output=LOOKUP_ANSWER,
         )
         retriever = FakeRetriever()
         service = RAGService(
@@ -75,13 +116,100 @@ class RagServiceTest(unittest.TestCase):
 
         self.assertIsInstance(result, RagAnswer)
         self.assertEqual(result.answer, "Revenue was 100.")
+        self.assertEqual(result.model_answer, "Revenue was 100.")
+        self.assertIsNone(result.computed_answer)
         self.assertEqual(result.citations, ["chunk-1"])
+        self.assertIsNone(result.calculation_program)
         self.assertEqual(len(model_client.prompts), 1)
         self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
         repeat = service.answer("What is revenue?", "record-1")
         self.assertEqual(repeat.answer, "Revenue was 100.")
         self.assertEqual(len(model_client.prompts), 2)
+
+    def test_answer_parses_calculation_program(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output=(
+                '{"answer":"Revenue doubled.","citations":["chunk-1"],'
+                '"calculation_program":{"steps":[{"operation":"divide",'
+                '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
+                '{"kind":"literal","literal":50.0}]}]}}'
+            ),
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=FakeRetriever(),
+        )
+
+        result = service.answer("How many times larger was revenue?", "record-1")
+
+        self.assertIsNotNone(result.calculation_program)
+        assert result.calculation_program is not None
+        self.assertEqual(result.calculation_program.steps[0].operation, "divide")
+        self.assertEqual(
+            result.calculation_program.steps[0].operands[0].value_id,
+            "chunk-1:value:0",
+        )
+        self.assertEqual(result.model_answer, "Revenue doubled.")
+
+    def test_build_table_value_candidates_assigns_stable_ids(self) -> None:
+        service = RAGService(
+            model_client=MockOllamaClient(model_name="test-model"),
+            retriever=FakeRetriever(),
+        )
+        results = service.retriever.retrieve("What is revenue?", "record-1")
+
+        candidates = service.build_table_value_candidates(results)
+
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0].value_id, "chunk-1:value:0")
+        self.assertEqual(candidates[0].chunk_id, "chunk-1")
+        self.assertEqual(candidates[0].metric, "revenue")
+        self.assertEqual(candidates[0].table_column, "FY2024")
+        self.assertEqual(candidates[0].numeric_value, 100.0)
+        self.assertEqual(candidates[1].value_id, "chunk-1:value:1")
+        self.assertEqual(candidates[1].numeric_value, 50.0)
+
+    def test_answer_executes_calculation_program_into_trace(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output=(
+                '{"answer":"Revenue increased by 50.","citations":["chunk-1"],'
+                '"calculation_program":{"steps":[{"operation":"subtract",'
+                '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
+                '{"kind":"table_value","value_id":"chunk-1:value:1"}]}]}}'
+            ),
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=FakeRetriever(),
+        )
+
+        result = service.answer("How much did revenue increase?", "record-1")
+
+        self.assertIsNotNone(result.calculation_trace)
+        assert result.calculation_trace is not None
+        self.assertEqual(result.answer, "50")
+        self.assertEqual(result.model_answer, "Revenue increased by 50.")
+        self.assertEqual(result.computed_answer, "50")
+        self.assertIsNone(result.calculation_trace.error)
+        self.assertEqual(result.calculation_trace.final_result, 50.0)
+        self.assertEqual(result.calculation_trace.steps[0].operands, [100.0, 50.0])
+        self.assertEqual(result.calculation_trace.steps[0].result, 50.0)
+
+    def test_answer_requires_explicit_calculation_program_key(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output='{"answer":"Revenue was 100.","citations":["chunk-1"]}',
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=FakeRetriever(),
+        )
+
+        with self.assertRaises(ValueError):
+            service.answer("What is revenue?", "record-1")
 
     def test_answer_rejects_invalid_json(self) -> None:
         model_client = MockOllamaClient(

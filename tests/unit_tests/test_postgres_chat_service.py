@@ -10,6 +10,14 @@ from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
 from src.main import record_cached_answer
 
 
+def rag_answer_json(answer: str, citations: list[str] | None = None) -> str:
+    citation_text = ",".join(f'"{citation}"' for citation in citations or [])
+    return (
+        f'{{"answer":"{answer}","citations":[{citation_text}],'
+        '"calculation_program":null}'
+    )
+
+
 class PostgresChatServiceTest(unittest.TestCase):
     def setUp(self) -> None:
         self.engine: Engine = create_engine("sqlite:///:memory:")
@@ -36,7 +44,7 @@ class PostgresChatServiceTest(unittest.TestCase):
     def _record_turn(
         self,
         prompt: str = "What changed?",
-        answer: str = '{"answer":"The cache works.","citations":[]}',
+        answer: str = rag_answer_json("The cache works."),
     ) -> tuple[ChatMessageRecord, None]:
         user_message = self.chat_service.record_user_message(
             self.chat_session.session_id,
@@ -82,7 +90,7 @@ class PostgresChatServiceTest(unittest.TestCase):
     def test_get_cached_returns_linked_assistant_answer(self) -> None:
         self._record_turn(
             prompt="What changed?",
-            answer='{"answer":"The linked assistant is returned.","citations":[]}',
+            answer=rag_answer_json("The linked assistant is returned."),
         )
 
         cached = self.chat_service.get_cached("What changed?", "record-1")
@@ -91,13 +99,13 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertEqual(cached.role, "assistant")
         self.assertEqual(
             cached.content,
-            '{"answer":"The linked assistant is returned.","citations":[]}',
+            rag_answer_json("The linked assistant is returned."),
         )
 
     def test_get_cached_ignores_invalid_assistant_answer(self) -> None:
         self._record_turn(
             prompt="What changed?",
-            answer='{"answer":"This answer was invalidated.","citations":[]}',
+            answer=rag_answer_json("This answer was invalidated."),
         )
         with self.chat_service.session_factory() as session:
             assistant_row = session.execute(
@@ -113,7 +121,7 @@ class PostgresChatServiceTest(unittest.TestCase):
     def test_cached_answer_is_recorded_as_new_history_pair(self) -> None:
         self._record_turn(
             prompt="What changed?",
-            answer='{"answer":"The cached answer is replayed.","citations":[]}',
+            answer=rag_answer_json("The cached answer is replayed."),
         )
         cached = self.chat_service.get_cached("What changed?", "record-1")
         self.assertIsNotNone(cached)
@@ -137,13 +145,13 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertEqual(history[0].user_question.content, "What changed?")
         self.assertEqual(
             history[0].assistant.content,
-            '{"answer":"The cached answer is replayed.","citations":[]}',
+            rag_answer_json("The cached answer is replayed."),
         )
         replayed_cached = self.chat_service.get_cached("What changed?", "record-1")
         self.assertIsNotNone(replayed_cached)
         self.assertEqual(
             replayed_cached.content,
-            '{"answer":"The cached answer is replayed.","citations":[]}',
+            rag_answer_json("The cached answer is replayed."),
         )
 
     def test_get_cached_returns_none_for_unanswered_prompt(self) -> None:
@@ -159,11 +167,11 @@ class PostgresChatServiceTest(unittest.TestCase):
     ) -> None:
         self._record_turn(
             prompt="Repeatable?",
-            answer='{"answer":"First answer.","citations":[]}',
+            answer=rag_answer_json("First answer."),
         )
         self._record_turn(
             prompt="Repeatable?",
-            answer='{"answer":"Second answer.","citations":[]}',
+            answer=rag_answer_json("Second answer."),
         )
 
         cached = self.chat_service.get_cached("Repeatable?", "record-1")
@@ -173,8 +181,8 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertIn(
             cached.content,
             {
-                '{"answer":"First answer.","citations":[]}',
-                '{"answer":"Second answer.","citations":[]}',
+                rag_answer_json("First answer."),
+                rag_answer_json("Second answer."),
             },
         )
 
@@ -201,7 +209,7 @@ class PostgresChatServiceTest(unittest.TestCase):
     def test_show_history_returns_linked_user_assistant_pairs(self) -> None:
         self._record_turn(
             prompt="Question one?",
-            answer='{"answer":"Answer one.","citations":[]}',
+            answer=rag_answer_json("Answer one."),
         )
 
         history = self.chat_service.show_history(self.chat_session.session_id, limit=2)
@@ -213,7 +221,7 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertEqual(history[0].assistant.role, "assistant")
         self.assertEqual(
             history[0].assistant.content,
-            '{"answer":"Answer one.","citations":[]}',
+            rag_answer_json("Answer one."),
         )
 
     def test_show_history_ignores_unpaired_user_messages(self) -> None:

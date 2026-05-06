@@ -1,7 +1,7 @@
 """Shared Pydantic models for source data, chunking, and retrieval."""
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -54,6 +54,15 @@ class ChunkType(Enum):
     TABLE_METRIC = "table_metric"
 
 
+class TableValue(BaseModel):
+    """Structured table value preserved for deterministic calculations."""
+
+    metric: str
+    table_column: str
+    value: Any
+    numeric_value: float | None = None
+
+
 class RetrievalChunk(BaseModel):
     """Normalized evidence unit sent to lexical/vector retrieval indexes."""
 
@@ -69,6 +78,7 @@ class RetrievalChunk(BaseModel):
     metric: str | None = None
     matched_metrics: list[str] = Field(default_factory=list)
     table_column: str | None = None
+    table_values: Sequence[TableValue] = Field(default_factory=list)
     years: list[str] = Field(default_factory=list)
     months: list[int] = Field(default_factory=list)
     quarters: list[int] = Field(default_factory=list)

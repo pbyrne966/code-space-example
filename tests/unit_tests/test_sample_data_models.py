@@ -10,6 +10,7 @@ from src.data_types import (
     ChatHistoryPair,
     ChatMessageRecord,
     ChatSessionRecord,
+    ChunkType,
     ConvFinQARecord,
     EmbeddedChunk,
     RetrievedChunkRecord,
@@ -90,6 +91,10 @@ class SampleDataModelValidationTest(unittest.TestCase):
                             table_row.matched_metrics, chunk.matched_metrics
                         )
                         self.assertEqual(table_row.table_column, chunk.table_column)
+                        self.assertEqual(
+                            table_row.table_values,
+                            [value.model_dump() for value in chunk.table_values],
+                        )
                         self.assertEqual(table_row.years, chunk.years)
                         self.assertIsInstance(table_row.to_pydantic(), RetrievalChunk)
                         self.assertEqual(table_row.to_pydantic(), chunk)
@@ -236,6 +241,46 @@ class SampleDataModelValidationTest(unittest.TestCase):
 
         for question in record.dialogue.conv_questions:
             self.assertNotIn(question, chunk_text)
+
+    def test_table_chunks_preserve_structured_values(self) -> None:
+        sample_file = sorted(SAMPLE_DATA_DIR.glob("convfinqa_*_sample.json"))[0]
+        sample_payload = json.loads(sample_file.read_text())
+        record = ConvFinQARecord(**sample_payload["records"][0])
+
+        chunks = chunk_record(
+            record=record,
+            split=sample_payload["split"],
+            record_index=0,
+            source_file=sample_file,
+        )
+        table_row_chunk = next(
+            chunk for chunk in chunks if chunk.chunk_type == ChunkType.TABLE_ROW
+        )
+        table_metric_chunk = next(
+            chunk for chunk in chunks if chunk.chunk_type == ChunkType.TABLE_METRIC
+        )
+
+        self.assertTrue(table_row_chunk.table_values)
+        self.assertTrue(table_metric_chunk.table_values)
+        self.assertTrue(
+            all(
+                table_value.table_column == table_row_chunk.table_column
+                for table_value in table_row_chunk.table_values
+            )
+        )
+        self.assertTrue(
+            all(
+                table_value.metric == table_metric_chunk.metric
+                for table_value in table_metric_chunk.table_values
+            )
+        )
+        self.assertTrue(
+            all(
+                table_value.numeric_value == float(table_value.value)
+                for table_value in table_row_chunk.table_values
+                if isinstance(table_value.value, int | float)
+            )
+        )
 
 
 if __name__ == "__main__":

@@ -54,6 +54,7 @@ def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
         metric=chunk.metric,
         matched_metrics=chunk.matched_metrics,
         table_column=chunk.table_column,
+        table_values=[value.model_dump() for value in chunk.table_values],
         years=chunk.years,
         months=chunk.months,
         quarters=chunk.quarters,
