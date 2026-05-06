@@ -128,6 +128,13 @@ table_values: {json.dumps(table_values)}
         table_value_candidates: list[TableValueCandidate] | None = None,
     ) -> str:
         context_string = "\n\n---\n\n".join(context)
+        candidate_payload = [
+            candidate.model_dump() for candidate in table_value_candidates or []
+        ]
+        calculation_program_schema = json.dumps(
+            CalculationProgram.model_json_schema(),
+            indent=2,
+        )
         return f"""
 You answer financial table questions using only the retrieved context.
 
@@ -140,20 +147,60 @@ Rules:
 - citations must contain the chunk_id that supports the answer.
 - If the answer is not in the context, set answer to "I don't know".
 - Do not invent numbers.
-- calculation_program must always be null.
+- answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
+- Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
+- citations must be a JSON array of chunk_id values used to support the answer.
+- Set calculation_program to null only when the answer is a direct lookup or text answer.
+- When arithmetic is needed, return a non-null calculation_program using only available_table_values or literal numbers from the question.
+- For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
+- For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
+- Be concise and precise.
 
-Response example schema:
-{{
-  "answer": number,
-  "citations": Array<Citation_ids>,
-  "calculation_program": null or Array<Steps to execute>
-}}
+Calculation program schema:
+{calculation_program_schema}
+
+Available table values for calculation:
+{json.dumps(candidate_payload, indent=2)}
 
 Question:
 {question}
 
 Retrieved context:
 {context_string}
+
+No-calculation response example:
+{{
+  "answer": "100",
+  "citations": ["chunk_id_1"],
+  "calculation_program": null
+}}
+
+
+Calculation response example:
+{{
+  "answer": "The percentage change is 14.1%.",
+  "answer": "14.1%",
+  "citations": ["chunk_id_1"],
+  "calculation_program": {{
+    "steps": [
+      {{
+        "operation": "subtract",
+        "operands": [
+          {{"kind": "table_value", "value_id": "chunk_id_1:value:0"}},
+          {{"kind": "table_value", "value_id": "chunk_id_1:value:1"}}
+        ]
+      }},
+      {{
+        "operation": "divide",
+        "operands": [
+          {{"kind": "step_result", "step_index": 0}},
+          {{"kind": "table_value", "value_id": "chunk_id_1:value:1"}}
+        ]
+      }}
+    ]
+  }}
+}}
+
 """.strip()
 
     def _parse_answer(self, output: str) -> RawRagAnswer:
