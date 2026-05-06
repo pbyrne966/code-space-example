@@ -1,12 +1,14 @@
 """Main Typer app for ConvFinQA."""
 
+from pydantic import ValidationError
 import typer
 from rich import print as rich_print
 
+from src.data_types import ChatMessageRecord, ChatSessionRecord
+from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
+from src.rag_service import RAGService, RagAnswer
 from src.runtime import build_context
-from src.rag_service import RagAnswer
-import json
 
 logger = get_logger("typer_logger")
 
@@ -15,6 +17,70 @@ app = typer.Typer(
     help="CLI for ConvFinQA chat workflows",
     add_completion=True,
 )
+
+
+def validate_cached_answer(
+    cached: ChatMessageRecord,
+    record_id: str,
+    chat_service: PostgresChatService,
+) -> RagAnswer | None:
+    try:
+        response = RagAnswer.model_validate_json(cached.content)
+        return response
+    except ValidationError:
+        logger.exception("Cached answer failed validation for record_id=%s", record_id)
+        rich_print("[red]Cached answer was not valid. Please try again.[/red]")
+        if cached.message_id is None:
+            logger.warning("Could not invalidate cached answer without message_id")
+            return None
+
+        try:
+            invalidated = chat_service.soft_delete(
+                cached.message_id,
+                cached.hashed_content,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to invalidate cached answer for message_id=%s",
+                cached.message_id,
+            )
+        else:
+            if not invalidated:
+                logger.warning(
+                    "No cached answer invalidated for message_id=%s",
+                    cached.message_id,
+                )
+        return None
+
+
+def retirieve_fn(
+    chat_service: PostgresChatService,
+    message: str,
+    session: ChatSessionRecord,
+    answer_service: RAGService,
+    record_id: str,
+) -> RagAnswer | None:
+    user_chat_exchange = chat_service.record_user_message(session.session_id, message)
+    try:
+        response = answer_service.answer(message, record_id)
+    except ValidationError:
+        logger.exception("Model answer failed validation for record_id=%s", record_id)
+        rich_print(
+            "[red]The model returned an invalid answer format. Please try again.[/red]"
+        )
+        return None
+    except Exception:
+        logger.exception("Retrieval failed for record_id=%s", record_id)
+        rich_print(
+            "[red]Could not retrieve an answer for that question. "
+            "Please try again.[/red]"
+        )
+        return
+
+    chat_service.record_assistant_message(
+        session.session_id, response.model_dump_json(), user_chat_exchange
+    )
+    return response
 
 
 @app.command()
@@ -56,20 +122,21 @@ def chat(
     while True:
         message = input(">>> ")
 
+        response: RagAnswer | None = None
+
         if message.strip().lower() in {"exit", "quit"}:
             break
 
         if settings.caching and (cached := chat_service.get_cached(message, record_id)):
-            response = RagAnswer(**json.loads(cached.content))
+            response = validate_cached_answer(cached, record_id, chat_service)
 
-        else:
-            user_chat_exchange = chat_service.record_user_message(
-                session.session_id, message
+        if response is None:
+            response = retirieve_fn(
+                chat_service, message, session, answer_service, record_id
             )
-            response = answer_service.answer(message, record_id)
-            chat_service.record_assistant_message(
-                session.session_id, response.model_dump_json(), user_chat_exchange
-            )
+
+        if response is None:
+            continue
 
         rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
         if response.citations:

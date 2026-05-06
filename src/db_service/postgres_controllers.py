@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import RetrievalChunk, SourceRecordMetadata
 
-from .data_types import (
+from src.data_types import (
     ChatHistoryPair,
     ChatMessageRecord,
     ChatSessionRecord,
@@ -68,6 +68,7 @@ class PostgresChatService(PostgresControllerContract):
                     (ChatSession.record_id == record_id)
                     & (ChatExchange.hashed_content == hashed_question)
                     & (ChatExchange.role == "user")
+                    & (ChatExchange.invalid != True)
                 )
                 .order_by(ChatExchange.created_at.desc())
                 .limit(1)
@@ -88,6 +89,25 @@ class PostgresChatService(PostgresControllerContract):
             if answer is None:
                 return None
             return answer.to_pydantic()
+
+    def soft_delete(self, message_id: int, hashed_content: str) -> bool:
+        statement = (
+            select(ChatExchange)
+            .where(
+                (ChatExchange.hashed_content == hashed_content)
+                & (ChatExchange.message_id == message_id)
+                & (ChatExchange.role == "assistant")
+            )
+            .limit(1)
+        )
+        with self.session_factory() as session:
+            message = session.execute(statement).scalar_one_or_none()
+            if message is None:
+                return False
+
+            message.invalid = True
+            session.commit()
+            return True
 
     def create_session(self, record_id: str) -> ChatSessionRecord:
         query = ChatSession(record_id=record_id)
@@ -354,7 +374,9 @@ class PostgresChunkStore(ChunkStore):
                 )
             if period_data.days:
                 filters.append(
-                    self._jsonb_array_contains(RetrievalChunkTable.days, period_data.days)
+                    self._jsonb_array_contains(
+                        RetrievalChunkTable.days, period_data.days
+                    )
                 )
 
         if filters:

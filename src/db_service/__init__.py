@@ -1,9 +1,9 @@
 """Database service interfaces, schemas, and implementations."""
 
-from .data_types import ChatHistoryPair as ChatHistoryPair
-from .data_types import ChatMessageRecord as ChatMessageRecord
-from .data_types import ChatSessionRecord as ChatSessionRecord
-from .data_types import RetrievedChunkRecord as RetrievedChunkRecord
+from src.data_types import ChatHistoryPair as ChatHistoryPair
+from src.data_types import ChatMessageRecord as ChatMessageRecord
+from src.data_types import ChatSessionRecord as ChatSessionRecord
+from src.data_types import RetrievedChunkRecord as RetrievedChunkRecord
 from .mappers import (
     retrieval_chunk_from_table as retrieval_chunk_from_table,
 )

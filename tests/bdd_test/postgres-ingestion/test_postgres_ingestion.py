@@ -9,7 +9,7 @@ from scripts import setup_db
 from src.chunking_service.data_loader import ProcessLayer
 from src.chunking_service.period_extraction import PeriodData
 from src.config.settings import Settings, get_settings
-from src.db_service.data_types import (
+from src.data_types import (
     ChatHistoryPair,
     ChatSessionRecord,
     RetrievedChunkRecord,
@@ -238,9 +238,7 @@ def period_ingestion_result(
 
 
 @when("I start a chat session for the sample record", target_fixture="chat_context")
-def chat_context(
-    ingestion_result: dict[str, object]
-) -> dict[str, object]:
+def chat_context(ingestion_result: dict[str, object]) -> dict[str, object]:
     """Create or resume a chat session for the ingested record."""
     record_id = ingestion_result["record_id"]
     db_engine = ingestion_result["db_engine"]
@@ -323,7 +321,7 @@ def vector_retrieval_should_return_chunks(ingestion_result: dict[str, object]) -
 
 @then("retrieval by year and month should return matching chunks")
 def retrieval_by_year_and_month_should_match(
-    period_ingestion_result: dict[str, object]
+    period_ingestion_result: dict[str, object],
 ) -> None:
     """Assert year+month filters are both applied."""
     store = period_ingestion_result["store"]
@@ -345,7 +343,7 @@ def retrieval_by_year_and_month_should_match(
 
 @then("retrieval by quarter and month should return matching chunks")
 def retrieval_by_quarter_and_month_should_match(
-    period_ingestion_result: dict[str, object]
+    period_ingestion_result: dict[str, object],
 ) -> None:
     """Assert quarter+month filters are both applied."""
     store = period_ingestion_result["store"]
@@ -367,7 +365,7 @@ def retrieval_by_quarter_and_month_should_match(
 
 @then("retrieval by exact date should return matching chunks")
 def retrieval_by_exact_date_should_match(
-    period_ingestion_result: dict[str, object]
+    period_ingestion_result: dict[str, object],
 ) -> None:
     """Assert exact date filtering reaches day-level period metadata."""
     store = period_ingestion_result["store"]

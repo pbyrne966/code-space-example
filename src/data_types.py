@@ -6,8 +6,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from src.data_types import RetrievalChunk
-
 SplitName = Literal["train", "dev", "test"]
 
 
@@ -141,6 +139,7 @@ class ChatMessageRecord(BaseModel):
     session_id: str
     role: str
     content: str
+    hashed_content: str
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

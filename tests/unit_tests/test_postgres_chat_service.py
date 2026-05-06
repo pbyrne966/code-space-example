@@ -3,7 +3,7 @@ import unittest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 
-from src.db_service.data_types import ChatHistoryPair, ChatMessageRecord
+from src.data_types import ChatHistoryPair, ChatMessageRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
 

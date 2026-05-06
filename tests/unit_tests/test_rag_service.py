@@ -1,8 +1,7 @@
 import unittest
 
 from src.chunking_service.period_extraction import PeriodData
-from src.data_types import ChunkType, RetrievalChunk
-from src.db_service.data_types import RetrievedChunkRecord
+from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
 from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 

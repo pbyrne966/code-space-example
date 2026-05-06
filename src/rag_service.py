@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.chunking_service.period_extraction import extract_period_data
 from src.data_types import RetrievalChunk
@@ -59,12 +59,7 @@ Return JSON following this type:
 """.strip()
 
     def _parse_answer(self, output: str) -> RagAnswer:
-        try:
-            return RagAnswer.model_validate_json(output)
-        except ValidationError as exc:
-            raise ValueError(
-                f"Model output did not match RagAnswer schema: {exc}"
-            ) from exc
+        return RagAnswer.model_validate_json(output)
 
     def answer(self, question: str, record_id: str) -> RagAnswer:
         period_data = extract_period_data([question])

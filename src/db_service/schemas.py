@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from uuid import uuid4
-
+import hashlib
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
@@ -327,6 +327,7 @@ class ChatExchange(Base):
             name="ck_chat_messages_role",
         ),
         Index("ix_chat_messages_session_created_at", "session_id", "created_at"),
+        Index("ix_hashed_content", "hashed_content"),
     )
 
     message_id: Mapped[int] = mapped_column(
@@ -337,9 +338,11 @@ class ChatExchange(Base):
         nullable=False,
         index=True,
     )
+
     role: Mapped[str] = mapped_column(String, nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     hashed_content: Mapped[str] = mapped_column(String(64), nullable=False)
+
     linked_message_id: Mapped[int | None] = mapped_column(
         ForeignKey("chat_messages.message_id"),
         nullable=True,
@@ -368,6 +371,7 @@ class ChatExchange(Base):
         back_populates="linked_message",
     )
 
+    invalid: Mapped[bool] = mapped_column(Boolean, default=False)
     session: Mapped[ChatSession] = relationship(back_populates="messages")
 
     def to_pydantic(self) -> ChatMessageRecord:
@@ -377,6 +381,9 @@ class ChatExchange(Base):
             session_id=self.session_id,
             role=self.role,
             content=self.content,
+            hashed_content=self.hashed_content
+            if self.hashed_content is not None
+            else hashlib.sha256(self.content.encode("utf-8")).hexdigest(),
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

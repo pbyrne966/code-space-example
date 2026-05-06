@@ -7,15 +7,13 @@ from pydantic import ValidationError
 
 from src.chunking_service.chunking import chunk_record
 from src.data_types import (
-    ConvFinQARecord,
-    EmbeddedChunk,
-    RetrievalChunk,
-)
-from src.db_service.data_types import (
     ChatHistoryPair,
     ChatMessageRecord,
     ChatSessionRecord,
+    ConvFinQARecord,
+    EmbeddedChunk,
     RetrievedChunkRecord,
+    RetrievalChunk,
 )
 from src.db_service.mappers import (
     retrieval_chunk_to_embedding_table,
@@ -196,6 +194,7 @@ class SampleDataModelValidationTest(unittest.TestCase):
                 session_id="session-1",
                 role="assistant",
                 content="A lot.",
+                hashed_content="assistant-hash",
                 created_at=now,
                 updated_at=now,
             ),
