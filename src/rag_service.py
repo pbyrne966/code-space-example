@@ -202,6 +202,7 @@ Retrieved context:
 
         table_value_candidates = self.build_table_value_candidates(results)
         prompt = self.build_prompt(question, context_blocks, table_value_candidates)
+        logger.debug("RAG prompt:\n%s", prompt)
         model_output = self.model_client.query_single(
             prompt,
             response_format=RawRagAnswer.model_json_schema(),
