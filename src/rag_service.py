@@ -7,7 +7,7 @@ from src.aggregator_service.query_intent import (
     CalculationProgram,
     TableValueCandidate,
 )
-from src.chunking_service.period_extraction import extract_period_data
+from src.chunking_service.period_extraction import PeriodData, extract_period_data
 from src.data_types import RetrievalChunk, RetrievedChunkRecord
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
@@ -82,6 +82,45 @@ table_values: {json.dumps(table_values)}
 
         return candidates
 
+    def log_retrieval_debug(
+        self,
+        question: str,
+        record_id: str,
+        period_data: PeriodData,
+        results: list[RetrievedChunkRecord],
+    ) -> None:
+        logger.debug(
+            "RAG retrieval question=%r record_id=%s period_data=%s",
+            question,
+            record_id,
+            period_data,
+        )
+        for index, row in enumerate(results, start=1):
+            chunk = row.chunk
+            logger.debug(
+                "RAG retrieved source=%s distance=%s chunk_id=%s metric=%s "
+                "table_column=%s years=%s period_labels=%s text=%s",
+                index,
+                row.distance,
+                chunk.chunk_id,
+                chunk.metric,
+                chunk.table_column,
+                chunk.years,
+                chunk.period_labels,
+                chunk.text,
+            )
+            for value in chunk.table_values:
+                logger.debug(
+                    "RAG candidate source=%s chunk_id=%s metric=%s column=%s "
+                    "value=%s numeric_value=%s",
+                    index,
+                    chunk.chunk_id,
+                    value.metric,
+                    value.table_column,
+                    value.value,
+                    value.numeric_value,
+                )
+
     def build_prompt(
         self,
         question: str,
@@ -153,6 +192,7 @@ Retrieved context:
     def answer(self, question: str, record_id: str) -> RagAnswer:
         period_data = extract_period_data([question])
         results = self.retriever.retrieve(question, record_id, period_data)
+        self.log_retrieval_debug(question, record_id, period_data, results)
         context_blocks = []
 
         for i, row in enumerate(results, start=1):

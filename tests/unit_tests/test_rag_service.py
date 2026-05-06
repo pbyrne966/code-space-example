@@ -104,7 +104,7 @@ class RagServiceTest(unittest.TestCase):
             prompt,
         )
         self.assertIn("answer must be only the value, not a sentence.", prompt)
-        self.assertIn('"answer": "100"', prompt)
+        self.assertIn('"answer": number', prompt)
         self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
