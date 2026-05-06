@@ -235,14 +235,6 @@ def chunk_record(
             )
         )
 
-    for window in chunk_via_sentence_window(record.doc.pre_text):
-        append_chunk(
-            local_id=f"sent_{window.start_sentence}_{window.end_sentence}",
-            chunk_type=ChunkType.PRE_TEXT,
-            text=f"Record {record.id}. Context before table. {window.text}",
-            matched_metrics=_find_metrics_in_text(window.text, table_metrics),
-        )
-
     for column_index, (table_column, values) in enumerate(record.doc.table.items()):
         period_data = extract_period_data([table_column])
         append_chunk(
