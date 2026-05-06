@@ -44,6 +44,7 @@ def execute_calculation_program(
     step_traces: list[CalculationStepTrace] = []
 
     try:
+        # TODO: This also assumes chainging -> we need an upstream change to the type
         for step_index, step in enumerate(program.steps):
             operation = OPERATIONS.get(step.operation)
             if operation is None:
