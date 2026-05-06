@@ -1,5 +1,5 @@
 base_url = "http://ollama:11434"
-model_name = "qwen2.5:0.5b"
+model_name = ""qwen2.5:7b""
 chat_endpoint = "/api/chat/"
 batch_endpoint = "/api/chat"
 max_tokens = 512
