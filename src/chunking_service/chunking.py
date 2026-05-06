@@ -5,6 +5,7 @@ from itertools import count
 from pathlib import Path
 from typing import (
     Any,
+    Sequence
 )
 
 from src.data_types import ChunkType, ConvFinQARecord, RetrievalChunk, SplitName, TableValue
@@ -59,14 +60,14 @@ def _numeric_value(value: Any) -> float | None:
 def _table_values_for_column(
     table_column: str,
     values: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> Sequence[TableValue]:
     return [
-        {
-            "metric": metric,
-            "table_column": table_column,
-            "value": value,
-            "numeric_value": _numeric_value(value),
-        }
+        TableValue(
+            metric=metric,
+            table_column=table_column,
+            value=value,
+            numeric_value=_numeric_value(value),
+        )
         for metric, value in values.items()
     ]
 
@@ -74,14 +75,14 @@ def _table_values_for_column(
 def _table_values_for_metric(
     metric: str,
     column_values: dict[str, Any],
-) -> list[dict[str, Any]]:
+) -> Sequence[TableValue]:
     return [
-        {
-            "metric": metric,
-            "table_column": table_column,
-            "value": value,
-            "numeric_value": _numeric_value(value),
-        }
+        TableValue(
+            metric=metric,
+            table_column=table_column,
+            value=value,
+            numeric_value=_numeric_value(value),
+        )
         for table_column, value in column_values.items()
     ]
 
@@ -220,7 +221,7 @@ def chunk_record(
                 metric=metric,
                 matched_metrics=matched_metrics or [],
                 table_column=table_column,
-                table_values=table_values or [],
+                table_values=table_values or [], # type: ignore
                 years=years or [],
                 months=months or [],
                 quarters=quarters or [],
@@ -246,7 +247,7 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_ROW,
             text=_format_table_row(record.id, table_column, values),
             table_column=table_column,
-            table_values=_table_values_for_column(table_column, values),
+            table_values=_table_values_for_column(table_column, values), # type: ignore
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,
@@ -265,7 +266,7 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_METRIC,
             text=_format_table_metric(record.id, metric, column_values),
             metric=metric,
-            table_values=_table_values_for_metric(metric, column_values),
+            table_values=_table_values_for_metric(metric, column_values), # type: ignore
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,

@@ -174,12 +174,13 @@ Retrieved context:
         final_answer = raw_answer.answer
         computed_answer = None
 
+        # TODO: This should instead -> Map each computed value to a TableValueCandidate As This assumees all quistions here are chained and potentialy could be seperate operations or queries
         if raw_answer.calculation_program is not None:
             calculation_trace = execute_calculation_program(
                 raw_answer.calculation_program,
                 table_value_candidates,
             )
-            if calculation_trace.error is None and calculation_trace.final_result is not None:
+            if calculation_trace.final_result is not None:
                 computed_answer = self._format_calculated_answer(
                     calculation_trace.final_result
                 )
