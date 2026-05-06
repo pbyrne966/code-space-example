@@ -89,31 +89,6 @@ def _table_values_for_metric(
         for table_column, value in column_values.items()
     ]
 
-def _normalize_metric_text(text: str) -> str:
-    return NON_WORD_RE.sub(" ", text.lower()).strip()
-
-
-def _extract_table_metrics(table: dict[str, dict[str, Any]]) -> list[NormalizedMetric]:
-    metrics: list[NormalizedMetric] = []
-    seen_metrics: set[str] = set()
-    for values in table.values():
-        for metric in values:
-            normalized_metric = _normalize_metric_text(metric)
-            if normalized_metric and normalized_metric not in seen_metrics:
-                seen_metrics.add(normalized_metric)
-                metrics.append((metric, normalized_metric))
-    return metrics
-
-
-def _find_metrics_in_text(text: str, metrics: list[NormalizedMetric]) -> list[str]:
-    normalized_text = f" {_normalize_metric_text(text)} "
-    matched_metrics: list[str] = []
-    for metric, normalized_metric in metrics:
-        if f" {normalized_metric} " in normalized_text:
-            matched_metrics.append(metric)
-
-    return matched_metrics
-
 
 def create_common_fields(
     record: ConvFinQARecord, record_index: int, split: SplitName, source_file: Path
@@ -146,8 +121,6 @@ def chunk_record(
     chunk_records: list[RetrievalChunk] = []
     chunk_counter = count()
     common_fields = create_common_fields(record, record_index, split, source_file)
-    table_metrics = _extract_table_metrics(record.doc.table)
-
     source_file_name = source_file.name
 
     def append_chunk(
