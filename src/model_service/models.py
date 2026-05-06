@@ -51,7 +51,12 @@ class ModelClient(Protocol):
     def model_exists(self) -> bool: ...
     def wait_until_model_ready(self) -> bool: ...
     def initialize(self) -> None: ...
-    def query_single(self, prompt: str, http_method: str = "POST") -> ModelOutput: ...
+    def query_single(
+        self,
+        prompt: str,
+        http_method: str = "POST",
+        response_format: dict[str, Any] | str | None = None,
+    ) -> ModelOutput: ...
     def query_batch(self, prompts: list[str]) -> list[ModelOutput]: ...
     def embed(self, text: str) -> list[float]: ...
     def get_config(self) -> ModelConfig: ...
@@ -170,7 +175,11 @@ class OllamaQwenClient:
             return data["message"]["content"]
         raise ValueError("Unsupported model response shape")
 
-    def build_payload(self, prompt: str) -> dict[str, Any]:
+    def build_payload(
+        self,
+        prompt: str,
+        response_format: dict[str, Any] | str | None = None,
+    ) -> dict[str, Any]:
         options: dict[str, Any] = {
             "num_predict": self.config.max_tokens,
             "temperature": self.config.temperature,
@@ -180,14 +189,22 @@ class OllamaQwenClient:
         if self.config.seed is not None:
             options["seed"] = self.config.seed
 
-        return {
+        payload: dict[str, Any] = {
             "model": self.config.model_name,
             "messages": [{"role": "user", "content": prompt}],
             "options": options,
             "stream": False,
         }
+        if response_format is not None:
+            payload["format"] = response_format
+        return payload
 
-    def query_single(self, prompt: str, http_method: str = "POST") -> ModelOutput:
+    def query_single(
+        self,
+        prompt: str,
+        http_method: str = "POST",
+        response_format: dict[str, Any] | str | None = None,
+    ) -> ModelOutput:
         request_id = str(uuid.uuid4())
         method = supported_http_method(http_method)
 
@@ -196,9 +213,15 @@ class OllamaQwenClient:
         return self.send_request(
             ModelInput(prompt=prompt, request_id=request_id),
             method,
+            response_format=response_format,
         )
 
-    def send_request(self, model_input: ModelInput, http_method: str) -> ModelOutput:
+    def send_request(
+        self,
+        model_input: ModelInput,
+        http_method: str,
+        response_format: dict[str, Any] | str | None = None,
+    ) -> ModelOutput:
         query_url = (
             f"{self.config.base_url.rstrip('/')}/"
             f"{self.config.chat_endpoint.lstrip('/')}"
@@ -207,7 +230,7 @@ class OllamaQwenClient:
         response = requests.request(
             method=http_method,
             url=query_url,
-            json=self.build_payload(model_input.prompt),
+            json=self.build_payload(model_input.prompt, response_format),
             timeout=self.config.allowed_timeout,
         )
 

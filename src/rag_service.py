@@ -1,6 +1,6 @@
 import json
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from src.aggregator_service.executor import execute_calculation_program
 from src.aggregator_service.query_intent import (
@@ -10,7 +10,10 @@ from src.aggregator_service.query_intent import (
 from src.chunking_service.period_extraction import extract_period_data
 from src.data_types import RetrievalChunk, RetrievedChunkRecord
 from src.db_service.postgres_controllers import PostgresChunkStore
+from src.logger import get_logger
 from src.model_service.models import ModelClient
+
+logger = get_logger("rag_service")
 
 
 class RawRagAnswer(BaseModel):
@@ -156,7 +159,11 @@ Retrieved context:
 """.strip()
 
     def _parse_answer(self, output: str) -> RawRagAnswer:
-        return RawRagAnswer.model_validate_json(output)
+        try:
+            return RawRagAnswer.model_validate_json(output)
+        except ValidationError:
+            logger.warning("Model returned invalid RawRagAnswer JSON: %s", output)
+            raise
 
     def build_final_answer(
         self,
@@ -196,6 +203,9 @@ Retrieved context:
 
         table_value_candidates = self.build_table_value_candidates(results)
         prompt = self.build_prompt(question, context_blocks, table_value_candidates)
-        model_output = self.model_client.query_single(prompt)
+        model_output = self.model_client.query_single(
+            prompt,
+            response_format=RawRagAnswer.model_json_schema(),
+        )
         raw_answer = self._parse_answer(model_output.output)
         return self.build_final_answer(raw_answer, table_value_candidates)

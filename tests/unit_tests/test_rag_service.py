@@ -1,9 +1,9 @@
 import unittest
 
+from src.aggregator_service.query_intent import TableValueCandidate
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
-from src.aggregator_service.query_intent import TableValueCandidate
-from src.rag_service import RagAnswer, RAGService
+from src.rag_service import RagAnswer, RAGService, RawRagAnswer
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 LOOKUP_ANSWER = '{"answer":"100","citations":["chunk-1"],"calculation_program":null}'
@@ -119,6 +119,10 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(result.citations, ["chunk-1"])
         self.assertIsNone(result.turn_program)
         self.assertEqual(len(model_client.prompts), 1)
+        self.assertEqual(
+            model_client.response_formats[0],
+            RawRagAnswer.model_json_schema(),
+        )
         self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
         repeat = service.answer("What is revenue?", "record-1")

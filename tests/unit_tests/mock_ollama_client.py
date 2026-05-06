@@ -26,6 +26,7 @@ class MockOllamaClient(ModelClient):
         )
         self.embedded_texts: list[str] = []
         self.prompts: list[str] = []
+        self.response_formats: list[dict | str | None] = []
         self.chat_output = chat_output
 
     def server_alive(self) -> bool:
@@ -58,8 +59,14 @@ class MockOllamaClient(ModelClient):
         """Run the mock single-query behavior across a prompt batch."""
         return [self.query_single(prompt) for prompt in prompts]
 
-    def query_single(self, prompt: str, http_method: str = "POST") -> ModelOutput:
+    def query_single(
+        self,
+        prompt: str,
+        http_method: str = "POST",
+        response_format: dict | str | None = None,
+    ) -> ModelOutput:
         self.prompts.append(prompt)
+        self.response_formats.append(response_format)
         raw_response = {"message": {"content": self.chat_output}}
         return ModelOutput(
             request_id="mock-request",
