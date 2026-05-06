@@ -1,13 +1,13 @@
 """Main Typer app for ConvFinQA."""
 
-from pydantic import ValidationError
 import typer
+from pydantic import ValidationError
 from rich import print as rich_print
 
 from src.data_types import ChatMessageRecord, ChatSessionRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
-from src.rag_service import RAGService, RagAnswer
+from src.rag_service import RagAnswer, RAGService
 from src.runtime import build_context
 
 logger = get_logger("typer_logger")
@@ -51,6 +51,26 @@ def validate_cached_answer(
                     cached.message_id,
                 )
         return None
+
+
+def record_cached_answer(
+    chat_service: PostgresChatService,
+    message: str,
+    session: ChatSessionRecord,
+    cached: ChatMessageRecord,
+    record_id: str,
+) -> RagAnswer | None:
+    response = validate_cached_answer(cached, record_id, chat_service)
+    if response is None:
+        return None
+
+    user_chat_exchange = chat_service.record_user_message(session.session_id, message)
+    chat_service.record_assistant_message(
+        session.session_id,
+        cached.content,
+        user_chat_exchange,
+    )
+    return response
 
 
 def retirieve_fn(
@@ -128,7 +148,13 @@ def chat(
             break
 
         if settings.caching and (cached := chat_service.get_cached(message, record_id)):
-            response = validate_cached_answer(cached, record_id, chat_service)
+            response = record_cached_answer(
+                chat_service,
+                message,
+                session,
+                cached,
+                record_id,
+            )
 
         if response is None:
             response = retirieve_fn(

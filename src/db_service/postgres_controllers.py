@@ -9,14 +9,15 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from src.chunking_service.period_extraction import PeriodData
-from src.data_types import RetrievalChunk, SourceRecordMetadata
-
 from src.data_types import (
     ChatHistoryPair,
     ChatMessageRecord,
     ChatSessionRecord,
+    RetrievalChunk,
     RetrievedChunkRecord,
+    SourceRecordMetadata,
 )
+
 from .mappers import (
     retrieval_chunk_from_table,
     retrieval_chunk_to_embedding_table,
@@ -68,7 +69,7 @@ class PostgresChatService(PostgresControllerContract):
                     (ChatSession.record_id == record_id)
                     & (ChatExchange.hashed_content == hashed_question)
                     & (ChatExchange.role == "user")
-                    & (ChatExchange.invalid != True)
+                    & (ChatExchange.invalid.is_(False))
                 )
                 .order_by(ChatExchange.created_at.desc())
                 .limit(1)
@@ -82,6 +83,7 @@ class PostgresChatService(PostgresControllerContract):
                 .where(
                     (ChatExchange.linked_message_id == found.message_id)
                     & (ChatExchange.role == "assistant")
+                    & (ChatExchange.invalid.is_(False))
                 )
                 .order_by(ChatExchange.created_at.desc())
                 .limit(1)
@@ -120,7 +122,12 @@ class PostgresChatService(PostgresControllerContract):
             return query.to_pydantic()
 
     def get_session(self, record_id: str) -> ChatSessionRecord | None:
-        query = select(ChatSession).where(ChatSession.record_id == record_id).limit(1)
+        query = (
+            select(ChatSession)
+            .where(ChatSession.record_id == record_id)
+            .order_by(ChatSession.last_message_at.desc(), ChatSession.created_at.desc())
+            .limit(1)
+        )
 
         with self.session_factory() as session:
             row = session.execute(query).scalar_one_or_none()
@@ -194,6 +201,7 @@ class PostgresChatService(PostgresControllerContract):
             .where(
                 (ChatExchange.session_id == session_id_str)
                 & (ChatExchange.role == "user")
+                & (ChatExchange.invalid.is_(False))
             )
             .order_by(ChatExchange.created_at.desc())
             .limit(lim_each)
@@ -208,6 +216,7 @@ class PostgresChatService(PostgresControllerContract):
                     .where(
                         (ChatExchange.linked_message_id.in_(user_ids))
                         & (ChatExchange.role == "assistant")
+                        & (ChatExchange.invalid.is_(False))
                     )
                     .order_by(ChatExchange.created_at.desc())
                 )

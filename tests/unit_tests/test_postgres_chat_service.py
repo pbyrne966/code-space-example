@@ -1,4 +1,5 @@
 import unittest
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
@@ -6,6 +7,7 @@ from sqlalchemy.engine import Engine
 from src.data_types import ChatHistoryPair, ChatMessageRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
+from src.main import record_cached_answer
 
 
 class PostgresChatServiceTest(unittest.TestCase):
@@ -92,6 +94,58 @@ class PostgresChatServiceTest(unittest.TestCase):
             '{"answer":"The linked assistant is returned.","citations":[]}',
         )
 
+    def test_get_cached_ignores_invalid_assistant_answer(self) -> None:
+        self._record_turn(
+            prompt="What changed?",
+            answer='{"answer":"This answer was invalidated.","citations":[]}',
+        )
+        with self.chat_service.session_factory() as session:
+            assistant_row = session.execute(
+                select(ChatExchange).where(ChatExchange.role == "assistant")
+            ).scalar_one()
+            assistant_row.invalid = True
+            session.commit()
+
+        cached = self.chat_service.get_cached("What changed?", "record-1")
+
+        self.assertIsNone(cached)
+
+    def test_cached_answer_is_recorded_as_new_history_pair(self) -> None:
+        self._record_turn(
+            prompt="What changed?",
+            answer='{"answer":"The cached answer is replayed.","citations":[]}',
+        )
+        cached = self.chat_service.get_cached("What changed?", "record-1")
+        self.assertIsNotNone(cached)
+
+        response = record_cached_answer(
+            self.chat_service,
+            "What changed?",
+            self.chat_session,
+            cached,
+            "record-1",
+        )
+
+        self.assertIsNotNone(response)
+        self.assertEqual(response.answer, "The cached answer is replayed.")
+        updated_session = self.chat_service.get_session("record-1")
+        self.assertIsNotNone(updated_session)
+        self.assertEqual(updated_session.message_count, 4)
+        self.assertEqual(updated_session.last_message_index, 3)
+        history = self.chat_service.show_history(self.chat_session.session_id, limit=4)
+        self.assertEqual(len(history), 2)
+        self.assertEqual(history[0].user_question.content, "What changed?")
+        self.assertEqual(
+            history[0].assistant.content,
+            '{"answer":"The cached answer is replayed.","citations":[]}',
+        )
+        replayed_cached = self.chat_service.get_cached("What changed?", "record-1")
+        self.assertIsNotNone(replayed_cached)
+        self.assertEqual(
+            replayed_cached.content,
+            '{"answer":"The cached answer is replayed.","citations":[]}',
+        )
+
     def test_get_cached_returns_none_for_unanswered_prompt(self) -> None:
         self.chat_service.record_user_message(
             self.chat_session.session_id,
@@ -123,6 +177,26 @@ class PostgresChatServiceTest(unittest.TestCase):
                 '{"answer":"Second answer.","citations":[]}',
             },
         )
+
+    def test_get_session_returns_most_recent_session_for_record(self) -> None:
+        second_session = self.chat_service.create_session("record-1")
+        old_time = datetime(2026, 5, 5, 12, 0, tzinfo=UTC)
+        new_time = old_time + timedelta(minutes=5)
+        with self.chat_service.session_factory() as session:
+            first_row = session.get(ChatSession, self.chat_session.session_id)
+            second_row = session.get(ChatSession, second_session.session_id)
+            self.assertIsNotNone(first_row)
+            self.assertIsNotNone(second_row)
+            first_row.last_message_at = old_time
+            first_row.created_at = old_time
+            second_row.last_message_at = new_time
+            second_row.created_at = new_time
+            session.commit()
+
+        resumed = self.chat_service.get_session("record-1")
+
+        self.assertIsNotNone(resumed)
+        self.assertEqual(resumed.session_id, second_session.session_id)
 
     def test_show_history_returns_linked_user_assistant_pairs(self) -> None:
         self._record_turn(

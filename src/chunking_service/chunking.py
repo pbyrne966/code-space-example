@@ -141,44 +141,6 @@ def _transpose_table_by_metric(
     return dict(metric_values)
 
 
-def _get_dialogue_value(values: list[Any], turn_index: int) -> Any | None:
-    if turn_index < len(values):
-        return values[turn_index]
-    return None
-
-
-def _format_dialogue_turn(
-    record_id: str,
-    turn_index: int,
-    question: str,
-    answer: Any | None,
-    turn_program: str | None,
-    executed_answer: Any | None,
-    previous_question: str | None = None,
-    previous_answer: Any | None = None,
-) -> str:
-    dialogue_parts = [f"Record {record_id}. Dialogue turn {turn_index}."]
-
-    if previous_question is not None:
-        previous_text = (
-            f"Previous turn {turn_index - 1}. Question: {previous_question}."
-        )
-        if previous_answer is not None:
-            previous_text += f" Answer: {previous_answer}."
-        dialogue_parts.append(previous_text)
-
-    dialogue_parts.append(f"Current question: {question}.")
-
-    if answer is not None:
-        dialogue_parts.append(f"Current answer: {answer}.")
-    if turn_program is not None:
-        dialogue_parts.append(f"Current program: {turn_program}.")
-    if executed_answer is not None:
-        dialogue_parts.append(f"Executed answer: {executed_answer}.")
-
-    return " ".join(dialogue_parts)
-
-
 def chunk_record(
     record: ConvFinQARecord, split: SplitName, record_index: int, source_file: Path
 ) -> list[RetrievalChunk]:
@@ -196,8 +158,6 @@ def chunk_record(
         metric: str | None = None,
         matched_metrics: list[str] | None = None,
         table_column: str | None = None,
-        turn_index: int | None = None,
-        qa_split: bool | None = None,
         years: list[str] | None = None,
         months: list[int] | None = None,
         quarters: list[int] | None = None,
@@ -221,8 +181,6 @@ def chunk_record(
                 metric=metric,
                 matched_metrics=matched_metrics or [],
                 table_column=table_column,
-                turn_index=turn_index,
-                qa_split=qa_split,
                 years=years or [],
                 months=months or [],
                 quarters=quarters or [],
@@ -280,39 +238,6 @@ def chunk_record(
             chunk_type=ChunkType.POST_TEXT,
             text=f"Record {record.id}. Context after table. {window.text}",
             matched_metrics=_find_metrics_in_text(window.text, table_metrics),
-        )
-
-    for turn_index, question in enumerate(record.dialogue.conv_questions):
-        answer = _get_dialogue_value(record.dialogue.conv_answers, turn_index)
-        turn_program = _get_dialogue_value(record.dialogue.turn_program, turn_index)
-        executed_answer = _get_dialogue_value(
-            record.dialogue.executed_answers, turn_index
-        )
-        qa_split = _get_dialogue_value(record.dialogue.qa_split, turn_index)
-        previous_question = (
-            record.dialogue.conv_questions[turn_index - 1] if turn_index > 0 else None
-        )
-        previous_answer = (
-            _get_dialogue_value(record.dialogue.conv_answers, turn_index - 1)
-            if turn_index > 0
-            else None
-        )
-
-        append_chunk(
-            local_id=f"turn_{turn_index}",
-            chunk_type=ChunkType.DIALOGUE_TURN,
-            text=_format_dialogue_turn(
-                record_id=record.id,
-                turn_index=turn_index,
-                question=question,
-                answer=answer,
-                turn_program=turn_program,
-                executed_answer=executed_answer,
-                previous_question=previous_question,
-                previous_answer=previous_answer,
-            ),
-            turn_index=turn_index,
-            qa_split=qa_split,
         )
 
     return chunk_records

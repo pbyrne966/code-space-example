@@ -54,8 +54,6 @@ def retrieval_chunk_to_table(chunk: RetrievalChunk) -> RetrievalChunkTable:
         metric=chunk.metric,
         matched_metrics=chunk.matched_metrics,
         table_column=chunk.table_column,
-        turn_index=chunk.turn_index,
-        qa_split=chunk.qa_split,
         years=chunk.years,
         months=chunk.months,
         quarters=chunk.quarters,

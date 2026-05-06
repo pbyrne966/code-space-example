@@ -52,7 +52,6 @@ class ChunkType(Enum):
     POST_TEXT = "post_text"
     TABLE_ROW = "table_row"
     TABLE_METRIC = "table_metric"
-    DIALOGUE_TURN = "dialogue_turn"
 
 
 class RetrievalChunk(BaseModel):
@@ -70,8 +69,6 @@ class RetrievalChunk(BaseModel):
     metric: str | None = None
     matched_metrics: list[str] = Field(default_factory=list)
     table_column: str | None = None
-    turn_index: int | None = None
-    qa_split: bool | None = None
     years: list[str] = Field(default_factory=list)
     months: list[int] = Field(default_factory=list)
     quarters: list[int] = Field(default_factory=list)

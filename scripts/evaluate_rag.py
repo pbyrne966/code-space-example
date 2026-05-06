@@ -6,6 +6,7 @@ evaluation logic you want, then ask for a review.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from time import perf_counter
 from typing import Annotated
@@ -64,7 +65,15 @@ class EvaluationReport(BaseModel):
 
 def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
     """Load ConvFinQA records for the requested split."""
-    raise NotImplementedError("TODO: load records from the dataset JSON")
+    raw_payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+    if split not in raw_payload:
+        raise ValueError(f"Unknown split '{split}' in {dataset_path}")
+
+    raw_records = raw_payload[split]
+    if not isinstance(raw_records, list):
+        raise ValueError(f"Expected split '{split}' to contain a list of records")
+
+    return [ConvFinQARecord(**record) for record in raw_records]
 
 
 def build_examples(
@@ -72,7 +81,34 @@ def build_examples(
     limit: int | None,
 ) -> list[EvaluationExample]:
     """Flatten ConvFinQA dialogue turns into evaluation examples."""
-    raise NotImplementedError("TODO: convert records into per-turn examples")
+    examples: list[EvaluationExample] = []
+
+    for record in records:
+        for turn_index, question in enumerate(record.dialogue.conv_questions):
+            if limit is not None and len(examples) >= limit:
+                return examples
+
+            if turn_index >= len(record.dialogue.conv_answers):
+                raise ValueError(
+                    f"Record {record.id} is missing answer for turn {turn_index}"
+                )
+
+            gold_program = (
+                record.dialogue.turn_program[turn_index]
+                if turn_index < len(record.dialogue.turn_program)
+                else None
+            )
+            examples.append(
+                EvaluationExample(
+                    record_id=record.id,
+                    turn_index=turn_index,
+                    question=question,
+                    gold_answer=record.dialogue.conv_answers[turn_index],
+                    gold_program=gold_program,
+                )
+            )
+
+    return examples
 
 
 def evaluate_retrieval(

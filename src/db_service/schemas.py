@@ -130,8 +130,6 @@ class RetrievalChunkTable(Base):
         nullable=True,
         index=True,
     )
-    turn_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    qa_split: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     years: Mapped[list[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
     months: Mapped[list[int]] = mapped_column(JSON_TYPE, nullable=False, default=list)
     quarters: Mapped[list[int]] = mapped_column(JSON_TYPE, nullable=False, default=list)
@@ -180,8 +178,6 @@ class RetrievalChunkTable(Base):
             metric=self.metric,
             matched_metrics=self.matched_metrics,
             table_column=self.table_column,
-            turn_index=self.turn_index,
-            qa_split=self.qa_split,
             years=self.years,
             months=self.months,
             quarters=self.quarters,
