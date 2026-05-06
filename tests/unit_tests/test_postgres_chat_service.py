@@ -12,10 +12,7 @@ from src.main import record_cached_answer
 
 def rag_answer_json(answer: str, citations: list[str] | None = None) -> str:
     citation_text = ",".join(f'"{citation}"' for citation in citations or [])
-    return (
-        f'{{"answer":"{answer}","citations":[{citation_text}],'
-        '"calculation_program":null}'
-    )
+    return f'{{"answer":"{answer}","citations":[{citation_text}],"turn_program":null}}'
 
 
 class PostgresChatServiceTest(unittest.TestCase):

@@ -165,6 +165,8 @@ def chat(
             continue
 
         rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
+        if response.turn_program:
+            rich_print(f"[dim]turn program: {response.turn_program}[/dim]")
         if response.citations:
             rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
 

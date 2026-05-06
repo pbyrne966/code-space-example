@@ -10,7 +10,9 @@ class MockOllamaClient(ModelClient):
     def __init__(
         self,
         model_name: str = "mock-qwen",
-        chat_output: str = '{"answer":"mock answer","citations":[]}',
+        chat_output: str = (
+            '{"answer":"mock answer","citations":[],"calculation_program":null}'
+        ),
     ) -> None:
         self._config = ModelConfig(
             base_url="http://example.com",

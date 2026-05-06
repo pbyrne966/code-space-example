@@ -35,6 +35,12 @@ def _resolve_operand(
     raise ValueError(f"Unsupported operand kind: {operand.kind}")
 
 
+def _format_program_value(value: float) -> str:
+    if value.is_integer():
+        return str(int(value))
+    return f"{value:.6g}"
+
+
 def execute_calculation_program(
     program: CalculationProgram,
     candidates: list[TableValueCandidate],
@@ -50,13 +56,20 @@ def execute_calculation_program(
             if operation is None:
                 raise ValueError(f"Unsupported operation: {step.operation}")
 
-            operands = [
-                _resolve_operand(operand, value_lookup, step_results)
-                for operand in step.operands
-            ]
-            turn_programs.append(f"{step.operation}({operands[0]}, {operands[1]})")
+            operands = []
+            formatted_operands = []
+            for operand in step.operands:
+                resolved = _resolve_operand(operand, value_lookup, step_results)
+                operands.append(resolved)
+                if operand.kind == "step_result":
+                    formatted_operands.append(f"#{operand.step_index}")
+                else:
+                    formatted_operands.append(_format_program_value(resolved))
+
+            turn_programs.append(f"{step.operation}({', '.join(formatted_operands)})")
             result = operation(operands)
             step_results.append(result)
+
             step_traces.append(
                 CalculationStepTrace(
                     step_index=step_index,
@@ -65,6 +78,7 @@ def execute_calculation_program(
                     result=result,
                 )
             )
+
     except Exception as exc:
         return CalculationTrace(
             steps=step_traces,

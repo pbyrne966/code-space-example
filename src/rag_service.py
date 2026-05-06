@@ -24,15 +24,13 @@ class RawRagAnswer(BaseModel):
 
 
 class RagAnswer(BaseModel):
-    """Final answer after deterministic post-processing."""
+    """Final scalar answer with supporting evidence and optional computation trace."""
 
     model_config = ConfigDict(extra="forbid")
 
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
-    conv_answer: str | None = None
     turn_program: str | None = None
-    executed_answer: float | None = None
 
 
 class RAGService:
@@ -104,6 +102,8 @@ Rules:
 - If the answer is not in the context, set answer to "I don't know".
 - Do not invent numbers.
 - Return exactly these keys: answer, citations, calculation_program.
+- answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
+- Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
 - citations must be a JSON array of chunk_id values used to support the answer.
 - Set calculation_program to null only when the answer is a direct lookup or text answer.
 - When arithmetic is needed, return a non-null calculation_program using only available_table_values or literal numbers from the question.
@@ -119,14 +119,14 @@ Available table values for calculation:
 
 No-calculation response example:
 {{
-  "answer": "Revenue was 100.",
+  "answer": "100",
   "citations": ["chunk_id_1"],
   "calculation_program": null
 }}
 
 Calculation response example:
 {{
-  "answer": "The percentage change is 14.1%.",
+  "answer": "14.1%",
   "citations": ["chunk_id_1"],
   "calculation_program": {{
     "steps": [
@@ -158,20 +158,12 @@ Retrieved context:
     def _parse_answer(self, output: str) -> RawRagAnswer:
         return RawRagAnswer.model_validate_json(output)
 
-    def _format_calculated_answer(self, value: float) -> str:
-        if value.is_integer():
-            return str(int(value))
-        return f"{value:.6g}"
-
     def build_final_answer(
         self,
         raw_answer: RawRagAnswer,
         table_value_candidates: list[TableValueCandidate],
     ) -> RagAnswer:
-        calculation_trace = None
         final_answer = raw_answer.answer
-        computed_answer = None
-        numeric_answer = None
         turn_programs = None
 
         if raw_answer.calculation_program is not None:
@@ -179,21 +171,17 @@ Retrieved context:
                 raw_answer.calculation_program,
                 table_value_candidates,
             )
-            if calculation_trace.final_result is not None:
-                computed_answer = self._format_calculated_answer(
-                    calculation_trace.final_result
+            if calculation_trace.error is not None:
+                raise ValueError(
+                    f"Calculation program failed: {calculation_trace.error}"
                 )
-                final_answer = computed_answer
-                numeric_answer = float(computed_answer)
+            if calculation_trace.turn_programs:
                 turn_programs = ", ".join([*calculation_trace.turn_programs])
 
         return RagAnswer(
             answer=final_answer,
             citations=raw_answer.citations,
-            turn_program=turn_programs
-            if turn_programs is not None
-            else str(final_answer),
-            executed_answer=numeric_answer,
+            turn_program=turn_programs,
         )
 
     def answer(self, question: str, record_id: str) -> RagAnswer:
