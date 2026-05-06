@@ -1,4 +1,5 @@
 import json
+from copy import deepcopy
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -108,8 +109,10 @@ Rules:
 - answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
 - Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
 - citations must be a JSON array of chunk_id values used to support the answer.
-- Set calculation_program to null only when the answer is a direct lookup or text answer.
-- When arithmetic is needed, return a non-null calculation_program using only available_table_values or literal numbers from the question.
+- For direct lookup or text answers, set calculation_program to null.
+- Use calculation_program only when arithmetic is required.
+- Do not create lookup calculation steps for direct lookup answers.
+- When arithmetic is required, return a non-null calculation_program using only available_table_values or literal numbers from the question.
 - For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
 - For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
 - Be concise and precise.
@@ -165,6 +168,35 @@ Retrieved context:
             logger.warning("Model returned invalid RawRagAnswer JSON: %s", output)
             raise
 
+    def build_response_format(
+        self,
+        table_value_candidates: list[TableValueCandidate],
+    ) -> dict:
+        response_format = deepcopy(RawRagAnswer.model_json_schema())
+        response_format["$defs"]["CalculationStep"]["properties"]["operation"][
+            "enum"
+        ] = [
+            operation
+            for operation in response_format["$defs"]["CalculationStep"][
+                "properties"
+            ]["operation"]["enum"]
+            if operation != "lookup"
+        ]
+
+        value_ids = [candidate.value_id for candidate in table_value_candidates]
+        if not value_ids:
+            return response_format
+
+        response_format["$defs"]["Operand"]["properties"]["value_id"] = {
+            "anyOf": [
+                {"type": "string", "enum": value_ids},
+                {"type": "null"},
+            ],
+            "default": None,
+            "title": "Value Id",
+        }
+        return response_format
+
     def build_final_answer(
         self,
         raw_answer: RawRagAnswer,
@@ -205,7 +237,7 @@ Retrieved context:
         prompt = self.build_prompt(question, context_blocks, table_value_candidates)
         model_output = self.model_client.query_single(
             prompt,
-            response_format=RawRagAnswer.model_json_schema(),
+            response_format=self.build_response_format(table_value_candidates),
         )
         raw_answer = self._parse_answer(model_output.output)
         return self.build_final_answer(raw_answer, table_value_candidates)

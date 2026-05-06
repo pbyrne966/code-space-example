@@ -100,6 +100,14 @@ class RagServiceTest(unittest.TestCase):
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
         )
+        self.assertIn(
+            "For direct lookup or text answers, set calculation_program to null.",
+            prompt,
+        )
+        self.assertIn(
+            "Do not create lookup calculation steps for direct lookup answers.",
+            prompt,
+        )
 
     def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
@@ -119,10 +127,19 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(result.citations, ["chunk-1"])
         self.assertIsNone(result.turn_program)
         self.assertEqual(len(model_client.prompts), 1)
+        value_id_schema = model_client.response_formats[0]["$defs"]["Operand"][
+            "properties"
+        ]["value_id"]
         self.assertEqual(
-            model_client.response_formats[0],
-            RawRagAnswer.model_json_schema(),
+            value_id_schema["anyOf"][0]["enum"],
+            ["chunk-1:value:0", "chunk-1:value:1"],
         )
+
+        operation_enum = model_client.response_formats[0]["$defs"][
+            "CalculationStep"
+        ]["properties"]["operation"]["enum"]
+        self.assertNotIn("lookup", operation_enum)
+        self.assertIn("subtract", operation_enum)
         self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
         repeat = service.answer("What is revenue?", "record-1")
@@ -166,6 +183,31 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(candidates[0].numeric_value, 100.0)
         self.assertEqual(candidates[1].value_id, "chunk-1:value:1")
         self.assertEqual(candidates[1].numeric_value, 50.0)
+
+    def test_response_format_restricts_table_value_ids(self) -> None:
+        service = RAGService(
+            model_client=MockOllamaClient(model_name="test-model"),
+            retriever=FakeRetriever(),
+        )
+        candidates = service.build_table_value_candidates(
+            service.retriever.retrieve("What is revenue?", "record-1")
+        )
+
+        response_format = service.build_response_format(candidates)
+        value_id_schema = response_format["$defs"]["Operand"]["properties"][
+            "value_id"
+        ]
+
+        self.assertEqual(
+            value_id_schema["anyOf"][0]["enum"],
+            ["chunk-1:value:0", "chunk-1:value:1"],
+        )
+
+        operation_enum = response_format["$defs"]["CalculationStep"]["properties"][
+            "operation"
+        ]["enum"]
+        self.assertNotIn("lookup", operation_enum)
+        self.assertIn("subtract", operation_enum)
 
     def test_answer_keeps_calculated_scalar_answer(self) -> None:
         model_client = MockOllamaClient(
