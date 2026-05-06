@@ -7,8 +7,7 @@ from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 LOOKUP_ANSWER = (
-    '{"answer":"Revenue was 100.","citations":["chunk-1"],'
-    '"calculation_program":null}'
+    '{"answer":"Revenue was 100.","citations":["chunk-1"],"calculation_program":null}'
 )
 
 
@@ -89,7 +88,7 @@ class RagServiceTest(unittest.TestCase):
         self.assertIn("Available table values for calculation:", prompt)
         self.assertIn('"value_id": "chunk-1:value:0"', prompt)
         self.assertIn(
-            'value_id to one exact value_id from available_table_values',
+            "value_id to one exact value_id from available_table_values",
             prompt,
         )
         self.assertIn(

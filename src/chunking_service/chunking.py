@@ -3,12 +3,15 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
-from typing import (
-    Any,
-    Sequence
-)
+from typing import Any, Sequence
 
-from src.data_types import ChunkType, ConvFinQARecord, RetrievalChunk, SplitName, TableValue
+from src.data_types import (
+    ChunkType,
+    ConvFinQARecord,
+    RetrievalChunk,
+    SplitName,
+    TableValue,
+)
 
 from .period_extraction import extract_period_data
 
@@ -221,7 +224,7 @@ def chunk_record(
                 metric=metric,
                 matched_metrics=matched_metrics or [],
                 table_column=table_column,
-                table_values=table_values or [], # type: ignore
+                table_values=table_values or [],  # type: ignore
                 years=years or [],
                 months=months or [],
                 quarters=quarters or [],
@@ -247,7 +250,7 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_ROW,
             text=_format_table_row(record.id, table_column, values),
             table_column=table_column,
-            table_values=_table_values_for_column(table_column, values), # type: ignore
+            table_values=_table_values_for_column(table_column, values),  # type: ignore
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,
@@ -266,21 +269,13 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_METRIC,
             text=_format_table_metric(record.id, metric, column_values),
             metric=metric,
-            table_values=_table_values_for_metric(metric, column_values), # type: ignore
+            table_values=_table_values_for_metric(metric, column_values),  # type: ignore
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,
             days=period_data.days,
             dates=period_data.dates,
             period_labels=period_data.period_labels,
-        )
-
-    for window in chunk_via_sentence_window(record.doc.post_text):
-        append_chunk(
-            local_id=f"sent_{window.start_sentence}_{window.end_sentence}",
-            chunk_type=ChunkType.POST_TEXT,
-            text=f"Record {record.id}. Context after table. {window.text}",
-            matched_metrics=_find_metrics_in_text(window.text, table_metrics),
         )
 
     return chunk_records

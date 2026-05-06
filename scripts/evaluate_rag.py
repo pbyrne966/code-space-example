@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated
+from typing import Annotated, List, Dict, Any
 
 import typer
 from pydantic import BaseModel, Field
@@ -18,8 +18,10 @@ from src.data_types import ConvFinQARecord
 from src.logger import get_logger
 from src.rag_service import RagAnswer
 from src.runtime import AppState, build_context
+import random
 
 logger = get_logger("rag_evaluation")
+
 
 class EvaluationExample(BaseModel):
     """One question/answer item to evaluate."""
@@ -76,18 +78,21 @@ def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
     return [ConvFinQARecord(**record) for record in raw_records]
 
 
+def pull_random_record_ids(
+    records: List[ConvFinQARecord], sample_size: int = 10
+) -> List[ConvFinQARecord]:
+    random_sample = random.sample([d for d in records], k=sample_size)
+    return random_sample
+
+
 def build_examples(
     records: list[ConvFinQARecord],
-    limit: int | None,
 ) -> list[EvaluationExample]:
     """Flatten ConvFinQA dialogue turns into evaluation examples."""
     examples: list[EvaluationExample] = []
 
     for record in records:
         for turn_index, question in enumerate(record.dialogue.conv_questions):
-            if limit is not None and len(examples) >= limit:
-                return examples
-
             if turn_index >= len(record.dialogue.conv_answers):
                 raise ValueError(
                     f"Record {record.id} is missing answer for turn {turn_index}"
@@ -116,7 +121,7 @@ def evaluate_retrieval(
     example: EvaluationExample,
     top_k: int,
 ) -> bool:
-    """Return whether retrieval found evidence needed for the gold answer."""
+
     raise NotImplementedError("TODO: calculate retrieval recall at k")
 
 
@@ -187,6 +192,7 @@ def write_report(report: EvaluationReport, output_path: Path) -> None:
     """Write the report as JSON."""
     raise NotImplementedError("TODO: serialize report to output_path")
 
+
 def main(
     split: Annotated[str, typer.Option(help="Dataset split to evaluate.")] = "dev",
     limit: Annotated[
@@ -213,7 +219,8 @@ def main(
         raise ValueError("Settings were not initialised")
 
     records = load_records(settings.raw_data_path, split)
-    examples = build_examples(records, limit)
+    example_records = pull_random_record_ids(records, limit or 10)
+    examples = build_examples(example_records)
 
     results = [
         evaluate_one(

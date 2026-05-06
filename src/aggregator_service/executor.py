@@ -42,9 +42,9 @@ def execute_calculation_program(
     value_lookup = {candidate.value_id: candidate for candidate in candidates}
     step_results: list[float] = []
     step_traces: list[CalculationStepTrace] = []
+    turn_programs = []
 
     try:
-        # TODO: This also assumes chainging -> we need an upstream change to the type
         for step_index, step in enumerate(program.steps):
             operation = OPERATIONS.get(step.operation)
             if operation is None:
@@ -54,6 +54,7 @@ def execute_calculation_program(
                 _resolve_operand(operand, value_lookup, step_results)
                 for operand in step.operands
             ]
+            turn_programs.append(f"{step.operation}({operands[0]}, {operands[1]})")
             result = operation(operands)
             step_results.append(result)
             step_traces.append(
@@ -68,10 +69,12 @@ def execute_calculation_program(
         return CalculationTrace(
             steps=step_traces,
             final_result=step_results[-1] if step_results else None,
+            turn_programs=turn_programs,
             error=str(exc),
         )
 
     return CalculationTrace(
         steps=step_traces,
         final_result=step_results[-1] if step_results else None,
+        turn_programs=turn_programs,
     )

@@ -66,6 +66,7 @@ def divide(values: list[float]) -> float:
         raise ZeroDivisionError("Cannot divide by zero")
     return values[0] / values[1]
 
+
 OPERATIONS = {
     "lookup": lookup,
     "add": add,

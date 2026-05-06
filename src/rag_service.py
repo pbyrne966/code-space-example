@@ -5,7 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field
 from src.aggregator_service.executor import execute_calculation_program
 from src.aggregator_service.query_intent import (
     CalculationProgram,
-    CalculationTrace,
     TableValueCandidate,
 )
 from src.chunking_service.period_extraction import extract_period_data
@@ -31,10 +30,9 @@ class RagAnswer(BaseModel):
 
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
-    model_answer: str | None = None
-    computed_answer: str | None = None
-    calculation_program: CalculationProgram | None
-    calculation_trace: CalculationTrace | None = None
+    conv_answer: str | None = None
+    turn_program: str | None = None
+    executed_answer: float | None = None
 
 
 class RAGService:
@@ -173,8 +171,9 @@ Retrieved context:
         calculation_trace = None
         final_answer = raw_answer.answer
         computed_answer = None
+        numeric_answer = None
+        turn_programs = None
 
-        # TODO: This should instead -> Map each computed value to a TableValueCandidate As This assumees all quistions here are chained and potentialy could be seperate operations or queries
         if raw_answer.calculation_program is not None:
             calculation_trace = execute_calculation_program(
                 raw_answer.calculation_program,
@@ -185,14 +184,16 @@ Retrieved context:
                     calculation_trace.final_result
                 )
                 final_answer = computed_answer
+                numeric_answer = float(computed_answer)
+                turn_programs = ", ".join([*calculation_trace.turn_programs])
 
         return RagAnswer(
             answer=final_answer,
             citations=raw_answer.citations,
-            model_answer=raw_answer.answer,
-            computed_answer=computed_answer,
-            calculation_program=raw_answer.calculation_program,
-            calculation_trace=calculation_trace,
+            turn_program=turn_programs
+            if turn_programs is not None
+            else str(final_answer),
+            executed_answer=numeric_answer,
         )
 
     def answer(self, question: str, record_id: str) -> RagAnswer:

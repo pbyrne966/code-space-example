@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, List
 
 from pydantic import BaseModel
 
@@ -35,6 +35,7 @@ class CalculationStep(BaseModel):
     ]
     operands: list[Operand]
 
+
 class CalculationProgram(BaseModel):
     steps: list[CalculationStep]
 
@@ -48,5 +49,6 @@ class CalculationStepTrace(BaseModel):
 
 class CalculationTrace(BaseModel):
     steps: list[CalculationStepTrace]
+    turn_programs: List[str]
     final_result: float | None = None
     error: str | None = None
