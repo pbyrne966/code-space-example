@@ -89,6 +89,24 @@ class RagServiceTest(unittest.TestCase):
         self.assertIn("answer must be only the value, not a sentence.", prompt)
         self.assertIn('"answer": "100"', prompt)
         self.assertIn(
+            "Match both the requested metric phrase and the requested year.",
+            prompt,
+        )
+        self.assertIn(
+            "Retrieved context is ranked by relevance; prefer earlier sources",
+            prompt,
+        )
+        self.assertIn("Do not answer with a different metric", prompt)
+        self.assertIn(
+            "citations must contain exact chunk_id values copied from the retrieved context.",
+            prompt,
+        )
+        self.assertIn('Do not cite source labels like "Source 1"', prompt)
+        self.assertIn(
+            '"citations": ["<exact chunk_id copied from retrieved context>"]',
+            prompt,
+        )
+        self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
         )
