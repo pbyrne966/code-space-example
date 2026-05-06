@@ -82,15 +82,6 @@ table_values: {json.dumps(table_values)}
 
         return candidates
 
-    def build_response_format(
-        self,
-        table_value_candidates: list[TableValueCandidate],
-    ) -> dict:
-        response_format = RawRagAnswer.model_json_schema()
-        response_format["properties"]["calculation_program"] = {"type": "null"}
-        response_format["required"] = ["answer", "calculation_program"]
-        return response_format
-
     def build_prompt(
         self,
         question: str,
@@ -173,7 +164,7 @@ Retrieved context:
         prompt = self.build_prompt(question, context_blocks, table_value_candidates)
         model_output = self.model_client.query_single(
             prompt,
-            response_format=self.build_response_format(table_value_candidates),
+            response_format=RawRagAnswer.model_json_schema(),
         )
         raw_answer = self._parse_answer(model_output.output)
         return self.build_final_answer(raw_answer, table_value_candidates)

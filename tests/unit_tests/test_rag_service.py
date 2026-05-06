@@ -3,7 +3,7 @@ import unittest
 from src.aggregator_service.query_intent import TableValueCandidate
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
-from src.rag_service import RagAnswer, RAGService
+from src.rag_service import RagAnswer, RAGService, RawRagAnswer
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 LOOKUP_ANSWER = '{"answer":"100","citations":["chunk-1"],"calculation_program":null}'
@@ -118,8 +118,8 @@ class RagServiceTest(unittest.TestCase):
         self.assertIsNone(result.turn_program)
         self.assertEqual(len(model_client.prompts), 1)
         self.assertEqual(
-            model_client.response_formats[0]["properties"]["calculation_program"],
-            {"type": "null"},
+            model_client.response_formats[0],
+            RawRagAnswer.model_json_schema(),
         )
         self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
 
@@ -164,22 +164,6 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(candidates[0].numeric_value, 100.0)
         self.assertEqual(candidates[1].value_id, "chunk-1:value:1")
         self.assertEqual(candidates[1].numeric_value, 50.0)
-
-    def test_response_format_forces_null_calculation_program(self) -> None:
-        service = RAGService(
-            model_client=MockOllamaClient(model_name="test-model"),
-            retriever=FakeRetriever(),
-        )
-        candidates = service.build_table_value_candidates(
-            service.retriever.retrieve("What is revenue?", "record-1")
-        )
-
-        response_format = service.build_response_format(candidates)
-
-        self.assertEqual(
-            response_format["properties"]["calculation_program"],
-            {"type": "null"},
-        )
 
     def test_answer_keeps_calculated_scalar_answer(self) -> None:
         model_client = MockOllamaClient(
