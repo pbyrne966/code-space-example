@@ -96,22 +96,18 @@ Rules:
 - Output a single JSON object only.
 - Do not wrap the output in markdown or extra prose.
 - Return exactly these keys: answer, citations, calculation_program.
-- If the question asks for a value in a specific year, copy the matching value from the context.
-- Match both the requested metric phrase and the requested year.
-- Retrieved context is ranked by relevance; prefer earlier sources when they directly answer the question.
-- Do not answer with a different metric from the same year.
+- If the question asks for a value in a specific year, copy the matching value.
 - answer must be only the value, not a sentence.
-- citations must contain exact chunk_id values copied from the retrieved context.
-- Do not cite source labels like "Source 1" or invent ids like "chunk_id_1".
+- citations must contain the chunk_id that supports the answer.
 - If the answer is not in the context, set answer to "I don't know".
 - Do not invent numbers.
 - calculation_program must always be null.
 
-Response example:
+Response example schema:
 {{
-  "answer": "100",
-  "citations": ["<exact chunk_id copied from retrieved context>"],
-  "calculation_program": null
+  "answer": number,
+  "citations": Array<Citation_ids>,
+  "calculation_program": null or Array<Steps to execute>
 }}
 
 Question:

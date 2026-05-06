@@ -55,6 +55,23 @@ class FakeRetriever:
         return [RetrievedChunkRecord(chunk=chunk, distance=0.12)]
 
 
+class ThreeResultRetriever(FakeRetriever):
+    def retrieve(
+        self, query: str, record_id: str, period_data: PeriodData | None = None
+    ):
+        base_result = super().retrieve(query, record_id, period_data)[0]
+        results = []
+        for index in range(3):
+            chunk = base_result.chunk.model_copy(
+                update={
+                    "chunk_id": f"chunk-{index + 1}",
+                    "text": f"Revenue source {index + 1}.",
+                }
+            )
+            results.append(RetrievedChunkRecord(chunk=chunk, distance=0.1 + index))
+        return results
+
+
 class RagServiceTest(unittest.TestCase):
     def test_build_prompt_requests_json_only(self) -> None:
         model_client = MockOllamaClient(
@@ -89,24 +106,6 @@ class RagServiceTest(unittest.TestCase):
         self.assertIn("answer must be only the value, not a sentence.", prompt)
         self.assertIn('"answer": "100"', prompt)
         self.assertIn(
-            "Match both the requested metric phrase and the requested year.",
-            prompt,
-        )
-        self.assertIn(
-            "Retrieved context is ranked by relevance; prefer earlier sources",
-            prompt,
-        )
-        self.assertIn("Do not answer with a different metric", prompt)
-        self.assertIn(
-            "citations must contain exact chunk_id values copied from the retrieved context.",
-            prompt,
-        )
-        self.assertIn('Do not cite source labels like "Source 1"', prompt)
-        self.assertIn(
-            '"citations": ["<exact chunk_id copied from retrieved context>"]',
-            prompt,
-        )
-        self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
         )
@@ -116,6 +115,7 @@ class RagServiceTest(unittest.TestCase):
         )
         self.assertNotIn("Calculation program schema:", prompt)
         self.assertNotIn("Available table values for calculation:", prompt)
+        self.assertNotIn("Match both the requested metric phrase", prompt)
 
     def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
@@ -128,7 +128,7 @@ class RagServiceTest(unittest.TestCase):
             retriever=retriever,
         )
 
-        result = service.answer("What was revenue on March 31, 2024?", "record-1")
+        result = service.answer("What is the requested figure?", "record-1")
 
         self.assertIsInstance(result, RagAnswer)
         self.assertEqual(result.answer, "100")
@@ -139,11 +139,28 @@ class RagServiceTest(unittest.TestCase):
             model_client.response_formats[0],
             RawRagAnswer.model_json_schema(),
         )
-        self.assertEqual(retriever.calls[0][2].dates, ["2024-03-31"])
+        self.assertEqual(retriever.calls[0][2].dates, [])
 
         repeat = service.answer("What is revenue?", "record-1")
         self.assertEqual(repeat.answer, "100")
         self.assertEqual(len(model_client.prompts), 2)
+
+    def test_answer_sends_retrieved_results_to_model(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output=LOOKUP_ANSWER,
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=ThreeResultRetriever(),
+        )
+
+        service.answer("What is the requested figure?", "record-1")
+
+        prompt = model_client.prompts[0]
+        self.assertIn("Revenue source 1.", prompt)
+        self.assertIn("Revenue source 2.", prompt)
+        self.assertIn("Revenue source 3.", prompt)
 
     def test_answer_keeps_scalar_answer_and_records_turn_program(self) -> None:
         model_client = MockOllamaClient(
