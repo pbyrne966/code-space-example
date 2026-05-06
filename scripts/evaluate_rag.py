@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated, Any
+from typing import Annotated
 
 import typer
 from pydantic import BaseModel, Field
@@ -19,13 +19,6 @@ from src.rag_service import RagAnswer
 from src.runtime import AppState, build_context
 
 logger = get_logger("rag_evaluation")
-
-app = typer.Typer(
-    name="evaluate-rag",
-    help="Evaluate ConvFinQA RAG retrieval, answers, and citations.",
-    add_completion=False,
-)
-
 
 class EvaluationExample(BaseModel):
     """One question/answer item to evaluate."""
@@ -158,8 +151,6 @@ def write_report(report: EvaluationReport, output_path: Path) -> None:
     """Write the report as JSON."""
     raise NotImplementedError("TODO: serialize report to output_path")
 
-
-@app.command()
 def main(
     split: Annotated[str, typer.Option(help="Dataset split to evaluate.")] = "dev",
     limit: Annotated[
@@ -208,4 +199,4 @@ def main(
 
 
 if __name__ == "__main__":
-    app()
+    typer.run(main)

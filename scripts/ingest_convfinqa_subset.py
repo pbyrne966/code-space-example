@@ -104,12 +104,7 @@ def main(
     ] = None,
 ) -> None:
     """Write and ingest a small dataset subset."""
-    context = build_context()
-    settings = context.settings
-    if settings is None:
-        raise ValueError("Settings were not initialised")
-
-    source_path = source or settings.raw_data_path
+    source_path = source or Path("data/convfinqa_dataset.json")
     selected_splits = splits or ["dev"]
     subset_path = write_subset(
         source_path=source_path,
@@ -118,6 +113,7 @@ def main(
         limit=limit,
     )
 
+    context = build_context()
     chunk_count = ingest_subset(context, subset_path)
 
     typer.echo(

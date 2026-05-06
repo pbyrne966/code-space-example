@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 from pathlib import Path
 from random import Random
-from typing import Any
+from typing import Annotated, Any
+
+import typer
 
 DEFAULT_SPLITS = ("train", "dev", "test")
 
@@ -43,6 +44,7 @@ def write_samples(
     seed: int,
     splits: tuple[str, ...] = DEFAULT_SPLITS,
 ) -> list[Path]:
+    """Write deterministic sample files for the requested dataset splits."""
     dataset = _load_dataset(source_file)
     output_dir.mkdir(parents=True, exist_ok=True)
     written_files: list[Path] = []
@@ -70,53 +72,40 @@ def write_samples(
     return written_files
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Create deterministic ConvFinQA sample JSON files."
+def main(
+    source: Annotated[
+        Path,
+        typer.Option(help="Path to the full ConvFinQA dataset JSON file."),
+    ] = Path("data/convfinqa_dataset.json"),
+    output_dir: Annotated[
+        Path,
+        typer.Option(help="Directory where sample JSON files will be written."),
+    ] = Path("data/samples"),
+    sample_size: Annotated[
+        int,
+        typer.Option(help="Number of records to sample from each split."),
+    ] = 5,
+    seed: Annotated[
+        int,
+        typer.Option(help="Seed used to create deterministic samples."),
+    ] = 96,
+    splits: Annotated[
+        list[str] | None,
+        typer.Option(help="Dataset splits to sample."),
+    ] = None,
+) -> None:
+    """Create deterministic ConvFinQA sample JSON files."""
+    selected_splits = tuple(splits or DEFAULT_SPLITS)
+    written_files = write_samples(
+        source_file=source,
+        output_dir=output_dir,
+        sample_size=sample_size,
+        seed=seed,
+        splits=selected_splits,
     )
-    parser.add_argument(
-        "--source",
-        type=Path,
-        default=Path("data/convfinqa_dataset.json"),
-        help="Path to the full ConvFinQA dataset JSON file.",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path("data/samples"),
-        help="Directory where sample JSON files will be written.",
-    )
-    parser.add_argument(
-        "--sample-size",
-        type=int,
-        default=5,
-        help="Number of records to sample from each split.",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=96,
-        help="Seed used to create deterministic samples.",
-    )
-    parser.add_argument(
-        "--splits",
-        nargs="+",
-        default=list(DEFAULT_SPLITS),
-        help="Dataset splits to sample.",
-    )
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    write_samples(
-        source_file=args.source,
-        output_dir=args.output_dir,
-        sample_size=args.sample_size,
-        seed=args.seed,
-        splits=tuple(args.splits),
-    )
+    for written_file in written_files:
+        typer.echo(written_file)
 
 
 if __name__ == "__main__":
-    main()
+    typer.run(main)
