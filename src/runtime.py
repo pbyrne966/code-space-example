@@ -48,7 +48,7 @@ def build_retriever(db_engine: Engine, client: ModelClient) -> PostgresChunkStor
     return PostgresChunkStore(
         db_engine,
         embedding_fn=client.embed,
-        embedding_model=client.get_config().model_name,
+        embedding_model=client.get_config().model_embed,
         top_k=2,
     )
 

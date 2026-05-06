@@ -61,9 +61,11 @@ class ProcessLayer:
                     source_file=self.raw_file_src,
                 )
             )
-        model_config = self.model_client.get_config()
         embed_fn = self.model_client.embed
+        model_name = self.model_client.get_config().model_embed or self.model_client.get_config().model_name
         self.db_service.add_chunks(
-            chunks, embedding_fn=embed_fn, embedding_model=model_config.model_name
+            chunks,
+            embedding_fn=embed_fn,
+            embedding_model=model_name,
         )
         return chunks
