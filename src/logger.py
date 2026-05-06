@@ -26,6 +26,11 @@ def get_logger(name: str = __name__) -> logging.Logger:
         log_format = os.getenv(
             "LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
+        if log_format.lower() == "json":
+            log_format = (
+                '{"time":"%(asctime)s","logger":"%(name)s",'
+                '"level":"%(levelname)s","message":"%(message)s"}'
+            )
         formatter = logging.Formatter(log_format)
 
         # Console handler
