@@ -5,13 +5,13 @@ from __future__ import annotations
 from src.chunking_service.data_loader import ProcessLayer
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
-from src.runtime import build_context
+from src.runtime import build_ingestion_context
 
 logger = get_logger("ingest_script")
 
 
 def main() -> None:
-    context = build_context()
+    context = build_ingestion_context()
 
     logger.info("Starting ingestion")
     db_engine = context.db_engine
@@ -27,10 +27,6 @@ def main() -> None:
     if client is None:
         raise ValueError("Could not initialize client")
 
-    retriever = context.retriever
-    if retriever is None:
-        raise ValueError("Could not initialize retriever")
-
     ProcessLayer(
         db_service=db_service,
         raw_file_src=settings.raw_data_path,
@@ -38,7 +34,7 @@ def main() -> None:
     ).process()
     logger.info("Ingestion finished")
 
-    if not retriever.has_data():
+    if not db_service.has_data():
         raise RuntimeError("Ingestion finished but no chunks were detected")
 
     logger.info("ingestion complete")

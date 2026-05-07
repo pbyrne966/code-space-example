@@ -139,7 +139,7 @@ class OllamaQwenClient:
             )
             raise RuntimeError("Failed to fetch model") from exc
 
-    def server_alive(self, retries: int = 5, delay: float = 1.0) -> bool:
+    def server_alive(self, retries: int = 60, delay: float = 2.0) -> bool:
         url = f"{self.base_url}/api/tags"
 
         for attempt in range(1, retries + 1):

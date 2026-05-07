@@ -12,7 +12,7 @@ from src.chunking_service.data_loader import ProcessLayer
 from src.data_types import RawDictRecords
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
-from src.runtime import AppState, build_context
+from src.runtime import IngestionAppState, build_ingestion_context
 
 logger = get_logger("subset_ingestion")
 
@@ -67,7 +67,7 @@ def write_subset(
     return output_path
 
 
-def ingest_subset(context: AppState, subset_path: Path) -> int:
+def ingest_subset(context: IngestionAppState, subset_path: Path) -> int:
     """Run ProcessLayer over the subset file and return chunk count."""
     if context.db_engine is None:
         raise ValueError("Database engine was not initialised")
@@ -113,7 +113,7 @@ def main(
         limit=limit,
     )
 
-    context = build_context()
+    context = build_ingestion_context()
     chunk_count = ingest_subset(context, subset_path)
 
     typer.echo(

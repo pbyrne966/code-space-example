@@ -1,6 +1,6 @@
 base_url = "http://localhost:11434"
 model_name = "qwen2.5:7b"
-chat_endpoint = "/api/chat/"
+chat_endpoint = "/api/chat"
 batch_endpoint = "/api/chat"
 max_tokens = 512
 allowed_timeout = 60
