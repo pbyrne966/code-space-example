@@ -39,6 +39,7 @@ class RagAnswer(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    user_quistion: str | None = None
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
     turn_program: str | None = None
@@ -51,17 +52,43 @@ class RAGService:
         self.retriever = retriever
         self.model_config = self.model_client.get_config()
 
-    def parse_chat_history(self, chat_histry: list[ChatHistoryPair]) -> str:
-        parsed_history = []
-        for history in chat_histry:
-            assistant_content = RagAnswer.model_validate_json(history.assistant.content)
-            user_content = RagAnswer.model_validate_json(history.user_question.content)
+    def parse_chat_history(
+        self, chat_history: list[ChatHistoryPair] | None
+    ) -> str | None:
+        """Format previous turns and their evidence for prompt conditioning."""
+        if not chat_history:
+            return None
 
+        parsed_history = []
+        for turn_index, history in enumerate(reversed(chat_history), start=1):
+            try:
+                assistant_content = RagAnswer.model_validate_json(
+                    history.assistant.content
+                )
+            except ValidationError:
+                logger.warning(
+                    "Skipping unparsable assistant history for session_id=%s "
+                    "message_id=%s",
+                    history.assistant.session_id,
+                    history.assistant.message_id,
+                )
+                continue
+
+            context_text = "\n\n".join(assistant_content.context_blocks)
             parsed_history.append(
-                f"User Quistion: {history.user_question.content} | Retreived Context: {history.assistant.content}"
+                f"""
+[Prior turn {turn_index}]
+User question: {history.user_question.content}
+Assistant answer: {assistant_content.answer}
+Assistant citations: {json.dumps(assistant_content.citations)}
+Prior retrieved context:
+{context_text}
+""".strip()
             )
 
-        return "\n".join(parsed_history)
+        if not parsed_history:
+            return None
+        return "\n\n---\n\n".join(parsed_history)
 
     def build_context_block(
         self, index: int, chunk: RetrievalChunk, distance: float
@@ -147,8 +174,10 @@ table_values: {json.dumps(table_values)}
         question: str,
         context: list[str],
         table_value_candidates: list[TableValueCandidate] | None = None,
+        session_history: str | None = None,
     ) -> str:
         context_string = "\n\n---\n\n".join(context)
+        session_history_string = session_history or "No prior turns."
         candidate_payload = [
             candidate.model_dump() for candidate in table_value_candidates or []
         ]
@@ -167,6 +196,9 @@ Rules:
 - answer must be only the value, not a sentence.
 - citations must contain the chunk_id that supports the answer.
 - If the answer is not in the context, set answer to "I don't know".
+- Use prior turns only to resolve conversational follow-ups such as "what about in 2008?".
+- Prefer the current retrieved context when it directly supports the answer.
+- If the current retrieved context is ambiguous, you may use prior retrieved context from the conversation history when it supports the resolved question.
 - Do not invent numbers.
 - answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
 - Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
@@ -186,6 +218,9 @@ Available table values for calculation:
 
 Question:
 {question}
+
+Conversation history:
+{session_history_string}
 
 Retrieved context:
 {context_string}
@@ -242,6 +277,7 @@ Calculation response example:
         raw_answer: RawRagAnswer,
         table_value_candidates: list[TableValueCandidate],
         context_blocks: list[str],
+        quistion: str,
     ) -> RagAnswer:
         final_answer = raw_answer.answer
         turn_programs = None
@@ -270,6 +306,7 @@ Calculation response example:
                 turn_programs = ", ".join([*calculation_trace.turn_programs])
 
         return RagAnswer(
+            user_quistion=quistion,
             answer=final_answer,
             citations=raw_answer.citations,
             turn_program=turn_programs,
@@ -294,7 +331,12 @@ Calculation response example:
             context_blocks.append(self.build_context_block(i, chunk, distance))
 
         table_value_candidates = self.build_table_value_candidates(results)
-        prompt = self.build_prompt(question, context_blocks, table_value_candidates)
+        prompt = self.build_prompt(
+            question,
+            context_blocks,
+            table_value_candidates,
+            parsed_session_history,
+        )
         logger.debug("RAG prompt:\n%s", prompt)
         model_output = self.model_client.query_single(
             prompt,
@@ -302,5 +344,5 @@ Calculation response example:
         )
         raw_answer = self._parse_answer(model_output.output)
         return self.build_final_answer(
-            raw_answer, table_value_candidates, context_blocks
+            raw_answer, table_value_candidates, context_blocks, question
         )

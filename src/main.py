@@ -80,9 +80,10 @@ def retirieve_fn(
     answer_service: RAGService,
     record_id: str,
 ) -> RagAnswer | None:
+    session_history = chat_service.show_history(session.session_id, limit=10)
     user_chat_exchange = chat_service.record_user_message(session.session_id, message)
     try:
-        response = answer_service.answer(message, record_id)
+        response = answer_service.answer(message, record_id, session_history)
     except ValidationError:
         logger.exception("Model answer failed validation for record_id=%s", record_id)
         rich_print(

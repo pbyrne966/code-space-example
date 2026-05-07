@@ -2,7 +2,13 @@ import unittest
 
 from src.aggregator_service.query_intent import TableValueCandidate
 from src.chunking_service.period_extraction import PeriodData
-from src.data_types import ChunkType, RetrievalChunk, RetrievedChunkRecord
+from src.data_types import (
+    ChatHistoryPair,
+    ChatMessageRecord,
+    ChunkType,
+    RetrievalChunk,
+    RetrievedChunkRecord,
+)
 from src.rag_service import RagAnswer, RAGService, RawRagAnswer
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
@@ -121,6 +127,8 @@ class RagServiceTest(unittest.TestCase):
             prompt,
         )
         self.assertIn("Calculation program schema:", prompt)
+        self.assertIn("Conversation history:", prompt)
+        self.assertIn("No prior turns.", prompt)
         self.assertIn("Available table values for calculation:", prompt)
         self.assertIn('"value_id": "chunk-1:value:0"', prompt)
         self.assertIn('"answer": "14.1%"', prompt)
@@ -128,6 +136,78 @@ class RagServiceTest(unittest.TestCase):
         self.assertIn('"step_index": 1', prompt)
         self.assertNotIn('"answer": "The percentage change is 14.1%."', prompt)
         self.assertNotIn("Match both the requested metric phrase", prompt)
+
+    def test_build_prompt_includes_session_history_guidance(self) -> None:
+        service = RAGService(
+            model_client=MockOllamaClient(model_name="test-model"),
+            retriever=FakeRetriever(),
+        )
+
+        prompt = service.build_prompt(
+            "What about in 2008?",
+            ["[Source 1] current 2008 table row"],
+            session_history=(
+                "[Prior turn 1]\n"
+                "User question: what is the net cash from operating activities in 2009?\n"
+                "Assistant answer: 206588\n"
+                "Prior retrieved context:\n"
+                "[Source 1] net cash from operating activities values"
+            ),
+        )
+
+        self.assertIn(
+            'Use prior turns only to resolve conversational follow-ups such as "what about in 2008?".',
+            prompt,
+        )
+        self.assertIn(
+            "User question: what is the net cash from operating activities in 2009?",
+            prompt,
+        )
+        self.assertIn("Assistant answer: 206588", prompt)
+        self.assertIn("Retrieved context:\n[Source 1] current 2008 table row", prompt)
+
+    def test_parse_chat_history_formats_prior_answers_and_context(self) -> None:
+        service = RAGService(
+            model_client=MockOllamaClient(model_name="test-model"),
+            retriever=FakeRetriever(),
+        )
+        history = [
+            ChatHistoryPair(
+                user_question=ChatMessageRecord(
+                    message_id=1,
+                    session_id="session-1",
+                    role="user",
+                    content="what is the net cash from operating activities in 2009?",
+                    hashed_content="hash-1",
+                ),
+                assistant=ChatMessageRecord(
+                    message_id=2,
+                    session_id="session-1",
+                    role="assistant",
+                    content=RagAnswer(
+                        answer="206588",
+                        citations=["chunk-1"],
+                        context_blocks=[
+                            "[Source 1]\n"
+                            "metric: net cash from operating activities\n"
+                            "table_values: 2009=206588, 2008=181001"
+                        ],
+                    ).model_dump_json(),
+                    hashed_content="hash-2",
+                ),
+            )
+        ]
+
+        parsed = service.parse_chat_history(history)
+
+        self.assertIsNotNone(parsed)
+        self.assertIn(
+            "User question: what is the net cash from operating activities in 2009?",
+            parsed,
+        )
+        self.assertIn("Assistant answer: 206588", parsed)
+        self.assertIn('Assistant citations: ["chunk-1"]', parsed)
+        self.assertIn("2008=181001", parsed)
 
     def test_answer_validates_json_and_calls_model(self) -> None:
         model_client = MockOllamaClient(
@@ -140,7 +220,30 @@ class RagServiceTest(unittest.TestCase):
             retriever=retriever,
         )
 
-        result = service.answer("What is the requested figure?", "record-1")
+        prior_turn = ChatHistoryPair(
+            user_question=ChatMessageRecord(
+                message_id=1,
+                session_id="session-1",
+                role="user",
+                content="What is revenue in FY2024?",
+                hashed_content="hash-1",
+            ),
+            assistant=ChatMessageRecord(
+                message_id=2,
+                session_id="session-1",
+                role="assistant",
+                content=RagAnswer(
+                    answer="100",
+                    citations=["chunk-1"],
+                    context_blocks=["Revenue was 100."],
+                ).model_dump_json(),
+                hashed_content="hash-2",
+            ),
+        )
+
+        result = service.answer(
+            "What is the requested figure?", "record-1", [prior_turn]
+        )
 
         self.assertIsInstance(result, RagAnswer)
         self.assertEqual(result.answer, "100")
@@ -152,6 +255,10 @@ class RagServiceTest(unittest.TestCase):
             RawRagAnswer.model_json_schema(),
         )
         self.assertEqual(retriever.calls[0][2].dates, [])
+        self.assertIn("Conversation history:", model_client.prompts[0])
+        self.assertIn(
+            "User question: What is revenue in FY2024?", model_client.prompts[0]
+        )
 
         repeat = service.answer("What is revenue?", "record-1")
         self.assertEqual(repeat.answer, "100")
