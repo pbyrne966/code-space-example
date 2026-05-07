@@ -9,14 +9,13 @@ from typing import Annotated
 import typer
 from pydantic import BaseModel, Field
 
-from src.data_types import ConvFinQARecord
+from src.data_types import ChatSessionRecord, ConvFinQARecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
 from src.rag_service import RagAnswer
 from src.runtime import build_context
-from src.main import process_quistion, validate_app_state
-from typing import Callable, List
-from functools import partial
+from src.main import process_quistion
+from typing import Callable, List, Any
 
 logger = get_logger("rag_evaluation")
 
@@ -147,12 +146,12 @@ def evaluate_citations(
     """Return whether citations are valid and support the answer."""
     # Have a build citation id function
     # This might have to come from parsing the query and grabing the source chunk
-    example_citations = [example]
+    example_citations = [example.gold_answer]
     return sorted(predicted.citations) == sorted(example_citations)
 
 
 def evaluate_one(
-    retieval_fn: Callable[[str, str, PostgresChatService], RagAnswer],
+    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
     chat_service: PostgresChatService,
     example: EvaluationExample,
     top_k: int,
@@ -163,8 +162,10 @@ def evaluate_one(
     start = perf_counter()
     try:
         chat_session = chat_service.get_or_create_session(record_id=example.record_id)
-        predicted: RagAnswer = retieval_fn(
-            message=example.message, record_id=example.record_id, session=chat_session
+        predicted: RagAnswer = retrieval_fn(
+            example.question,
+            example.record_id,
+            chat_session,  # type: ignore
         )
         latency_seconds = perf_counter() - start
 
@@ -193,25 +194,31 @@ def evaluate_one(
         )
 
 
-def summarize_results(results: list[ExampleResult], record_ids: List[str]) -> EvaluationSummary:
+def summarize_results(
+    results: list[ExampleResult], records: List[Any]
+) -> EvaluationSummary:
     """Aggregate per-example results into headline metrics."""
     # Look at the quistion and the timing -> see how quistion complexity influces the timing of the response
-    
+
     failed_examples = 0
     problematic_record_id = set()
 
-
     for result in results:
-        if result.error is not None or not result.answer_correct or not result.citation_valid:
+        if (
+            result.error is not None
+            or not result.answer_correct
+            or not result.citation_valid
+        ):
             failed_examples += 1
             # Might to reference further here but this is fine for now
-            problematic_record_id.add(result.record_id)
+            problematic_record_id.add(result.example.record_id)
 
     evaluation_summary = EvaluationSummary(
-        total_examples=len(record_ids),
-        answered_examples=len(results),
-        failed_examples=0
+        total_examples=len(records), answered_examples=len(results), failed_examples=0
     )
+
+    return evaluation_summary
+
 
 def main(
     split: Annotated[str, typer.Option(help="Dataset split to evaluate.")] = "dev",
@@ -233,24 +240,29 @@ def main(
     ] = Path("evaluation_results.json"),
 ) -> None:
     """Run RAG evaluation for a ConvFinQA split."""
-    context = build_context()
-    validate_app_state(context)
 
+    context = build_context()
     settings = context.settings
-    records = load_records(settings.raw_data_path, split)
+    records = load_records(settings.raw_data_path, split)  # type: ignore
     example_records = pull_random_record_ids(records, limit or 10)
     examples = build_examples(example_records)
 
-    retreival_fn = partial(
-        process_quistion,
-        settings=settings,
-        chat_service=context.chat_service,
-        answer_service=settings.answer_service,
-    )
+    def retrieve_partial(
+        message: str, record_id: str, session: ChatSessionRecord
+    ) -> RagAnswer | None:
+        return process_quistion(
+            message,
+            record_id,
+            session=session,
+            settings=settings,
+            chat_service=context.chat_service,
+            answer_service=context.answer_service,
+        )
 
     results = [
         evaluate_one(
-            retrieval_fn=retreival_fn,
+            retrieval_fn=retrieve_partial,
+            chat_service=context.chat_service,
             example=example,
             top_k=top_k,
             numeric_tolerance=numeric_tolerance,
@@ -259,11 +271,9 @@ def main(
     ]
 
     report = EvaluationReport(
-        summary=summarize_results(results),
+        summary=summarize_results(results, example_records),
         results=results,
     )
-
-    # typer.echo(report.summary.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

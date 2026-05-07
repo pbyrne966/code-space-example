@@ -24,6 +24,16 @@ class AppState:
     answer_service: RAGService | None = None
 
 
+@dataclass
+class ValidatedAppState:
+    settings: Settings
+    client: ModelClient
+    db_engine: Engine
+    retriever: PostgresChunkStore
+    chat_service: PostgresChatService
+    answer_service: RAGService
+
+
 def load_config() -> Settings:
     """Load and validate runtime settings from the environment."""
     logger.info("Loading application settings")
@@ -69,7 +79,41 @@ def build_answer_service(
     return RAGService(model_client=client, retriever=retriever)
 
 
-def build_context() -> AppState:
+def validate_app_state(
+    settings: Settings,
+    retriever: PostgresChunkStore,
+    chat_service: PostgresChatService,
+    answer_service: RAGService,
+    db_engine: Engine,
+    model_client: ModelClient,
+) -> ValidatedAppState:
+    if settings is None:
+        raise ValueError("Settings could not be built")
+
+    if retriever is None:
+        raise ValueError("Retreiever could not be built")
+
+    if chat_service is None:
+        raise ValueError("Could not build chat service")
+
+    if answer_service is None:
+        raise ValueError("Could not build answer service")
+
+    if not retriever.has_data():
+        raise ValueError(
+            "Services are up, but no ingested data was found. Run the ingestion script first."
+        )
+    return ValidatedAppState(
+        settings,
+        model_client,
+        db_engine,
+        retriever,
+        chat_service,
+        answer_service,
+    )
+
+
+def build_context() -> ValidatedAppState:
     """Build the runtime connections shared by CLI commands."""
     settings = load_config()
     client = build_client(settings)
@@ -77,12 +121,8 @@ def build_context() -> AppState:
     retriever = build_retriever(db_engine, client)
     chat_service = build_chat_service(db_engine)
     answer_service = build_answer_service(client, retriever)
+    model_client = build_client(settings)
 
-    return AppState(
-        settings=settings,
-        client=client,
-        db_engine=db_engine,
-        retriever=retriever,
-        chat_service=chat_service,
-        answer_service=answer_service,
+    return validate_app_state(
+        settings, retriever, chat_service, answer_service, db_engine, model_client
     )

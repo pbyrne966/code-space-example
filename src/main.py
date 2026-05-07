@@ -131,43 +131,17 @@ def process_quistion(
     return response
 
 
-def validate_app_state(settings, retriever, chat_service, answer_service):
-    if settings is None:
-        rich_print("[red]Settings could not be built[/red]")
-        raise typer.Exit(code=1)
-
-    if retriever is None:
-        rich_print("[red]Retreiever could not be built[/red]")
-        raise typer.Exit(code=1)
-
-    if chat_service is None:
-        rich_print("[red]Could not build chat service[/red]")
-        raise typer.Exit(code=1)
-
-    if answer_service is None:
-        rich_print("[red]Could not build answer service[/red]")
-        raise typer.Exit(code=1)
-
-    if not retriever.has_data():
-        rich_print(
-            "[yellow]Services are up, but no ingested data was found. Run the ingestion script first.[/yellow]"
-        )
-        raise typer.Exit(code=2)
-
-
 @app.command()
 def chat(
     record_id: str = typer.Argument(..., help="ID of the record to chat about"),
 ) -> None:
     """Open an interactive RAG chat session."""
     context = build_context()
-    retriever = context.retriever
     chat_service = context.chat_service
     answer_service = context.answer_service
     settings = context.settings
-
-    validate_app_state(settings, retriever, chat_service, answer_service)
     session = chat_service.start_or_resume_session(record_id)
+
     rich_print(f"[dim]chat session: {session.session_id} for record: {record_id}[/dim]")
 
     while True:
@@ -176,7 +150,12 @@ def chat(
             break
 
         response: RagAnswer | None = process_quistion(
-            message, record_id, session, settings, chat_service, answer_service
+            message,
+            record_id,
+            session,
+            settings,
+            chat_service,
+            answer_service,
         )
 
         if response is None:
