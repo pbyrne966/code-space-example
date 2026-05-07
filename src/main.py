@@ -95,7 +95,7 @@ def retirieve_fn(
             "[red]Could not retrieve an answer for that question. "
             "Please try again.[/red]"
         )
-        return
+        return None
 
     chat_service.record_assistant_message(
         session.session_id, response.model_dump_json(), user_chat_exchange

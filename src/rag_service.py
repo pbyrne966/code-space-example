@@ -8,7 +8,7 @@ from src.aggregator_service.query_intent import (
     TableValueCandidate,
 )
 from src.chunking_service.period_extraction import PeriodData, extract_period_data
-from src.data_types import RetrievalChunk, RetrievedChunkRecord
+from src.data_types import ChatHistoryPair, RetrievalChunk, RetrievedChunkRecord
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
 from src.model_service.models import ModelClient
@@ -42,6 +42,7 @@ class RagAnswer(BaseModel):
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
     turn_program: str | None = None
+    context_blocks: list[str] = Field(default_factory=list)
 
 
 class RAGService:
@@ -49,6 +50,18 @@ class RAGService:
         self.model_client = model_client
         self.retriever = retriever
         self.model_config = self.model_client.get_config()
+
+    def parse_chat_history(self, chat_histry: list[ChatHistoryPair]) -> str:
+        parsed_history = []
+        for history in chat_histry:
+            assistant_content = RagAnswer.model_validate_json(history.assistant.content)
+            user_content = RagAnswer.model_validate_json(history.user_question.content)
+
+            parsed_history.append(
+                f"User Quistion: {history.user_question.content} | Retreived Context: {history.assistant.content}"
+            )
+
+        return "\n".join(parsed_history)
 
     def build_context_block(
         self, index: int, chunk: RetrievalChunk, distance: float
@@ -228,6 +241,7 @@ Calculation response example:
         self,
         raw_answer: RawRagAnswer,
         table_value_candidates: list[TableValueCandidate],
+        context_blocks: list[str],
     ) -> RagAnswer:
         final_answer = raw_answer.answer
         turn_programs = None
@@ -259,11 +273,18 @@ Calculation response example:
             answer=final_answer,
             citations=raw_answer.citations,
             turn_program=turn_programs,
+            context_blocks=context_blocks,
         )
 
-    def answer(self, question: str, record_id: str) -> RagAnswer:
+    def answer(
+        self,
+        question: str,
+        record_id: str,
+        session_history: list[ChatHistoryPair] | None = None,
+    ) -> RagAnswer:
         period_data = extract_period_data([question])
         results = self.retriever.retrieve(question, record_id, period_data)
+        parsed_session_history = self.parse_chat_history(session_history)
         self.log_retrieval_debug(question, record_id, period_data, results)
         context_blocks = []
 
@@ -280,4 +301,6 @@ Calculation response example:
             response_format=RawRagAnswer.model_json_schema(),
         )
         raw_answer = self._parse_answer(model_output.output)
-        return self.build_final_answer(raw_answer, table_value_candidates)
+        return self.build_final_answer(
+            raw_answer, table_value_candidates, context_blocks
+        )

@@ -1,8 +1,10 @@
 """SQLAlchemy ORM schemas for chunk storage."""
 
-from datetime import datetime
-from uuid import uuid4
 import hashlib
+from datetime import datetime
+from typing import Any, cast
+from uuid import uuid4
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON,
@@ -26,12 +28,14 @@ from sqlalchemy.orm import (
 )
 
 from src.data_types import (
+    ChatMessageRecord,
+    ChatSessionRecord,
     ChunkType,
     EmbeddedChunk,
     RetrievalChunk,
     SourceRecordMetadata,
+    SplitName,
 )
-from src.data_types import ChatMessageRecord, ChatSessionRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 MAX_EMBEDDING_DIMENSION = 896
@@ -87,7 +91,7 @@ class SourceRecordTable(Base):
             record_id=self.record_id,
             source_file=self.source_file,
             record_index=self.record_index,
-            split=self.split,  # type: ignore[arg-type]
+            split=cast(SplitName, self.split),
             has_type2_question=self.has_type2_question,
             has_duplicate_columns=self.has_duplicate_columns,
             has_non_numeric_values=self.has_non_numeric_values,
@@ -131,7 +135,7 @@ class RetrievalChunkTable(Base):
         nullable=True,
         index=True,
     )
-    table_values: Mapped[list[dict]] = mapped_column(
+    table_values: Mapped[list[dict[str, Any]]] = mapped_column(
         JSON_TYPE,
         nullable=False,
         default=list,
@@ -178,7 +182,7 @@ class RetrievalChunkTable(Base):
             source_file=self.source_file,
             record_index=self.record_index,
             chunk_index=self.chunk_index,
-            split=self.split,  # type: ignore[arg-type]
+            split=cast(SplitName, self.split),
             chunk_type=ChunkType(self.chunk_type),
             text=self.text,
             metric=self.metric,

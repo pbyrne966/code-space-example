@@ -1,6 +1,6 @@
 import hashlib
 from collections.abc import Callable, Iterable
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import func, literal, select, text, update
@@ -35,7 +35,7 @@ from .schemas import (
 
 class PostgresControllerContract(Protocol):
     def has_data(self) -> bool: ...
-    def setup(self): ...
+    def setup(self) -> None: ...
 
 
 class ChunkStore(PostgresControllerContract, Protocol):
@@ -56,7 +56,7 @@ class PostgresChatService(PostgresControllerContract):
         self.engine = engine
         self.session_factory = sessionmaker(bind=engine, expire_on_commit=False)
 
-    def setup(self):
+    def setup(self) -> None:
         return
 
     def get_cached(self, prompt: str, record_id: str) -> ChatMessageRecord | None:
@@ -391,7 +391,11 @@ class PostgresChunkStore(ChunkStore):
             "the embedding model that created the stored rows."
         )
 
-    def _apply_period_filters(self, statement, period_data: PeriodData | None):
+    def _apply_period_filters(
+        self,
+        statement: Any,
+        period_data: PeriodData | None,
+    ) -> Any:
         if period_data is None:
             return statement
 
@@ -432,7 +436,7 @@ class PostgresChunkStore(ChunkStore):
         return statement
 
     @staticmethod
-    def _jsonb_array_contains(column, values):
+    def _jsonb_array_contains(column: Any, values: list[Any]) -> Any:
         return column.op("@>")(literal(values, type_=JSONB))
 
     def has_data(self) -> bool:

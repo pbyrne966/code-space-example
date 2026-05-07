@@ -1,8 +1,9 @@
 """Shared Pydantic models for source data, chunking, and retrieval."""
 
-from enum import Enum
-from typing import Any, Literal, Sequence
+from collections.abc import Sequence
 from datetime import datetime
+from enum import Enum
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 

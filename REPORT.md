@@ -2,41 +2,16 @@
 
 *The headers here are guidelines, you can structure your report however you like.*
 ## Method
-The project builds a question answering pipeline for ConvFinQA. The main idea is to turn
-each financial record into evidence chunks, retrieve the most relevant chunks for a user
-question, and then ask the model to answer using only that retrieved evidence.
+The project implements a question-answering pipeline for ConvFinQA. The core idea is to transform each financial record into structured evidence chunks, retrieve the most relevant pieces for a given query, and generate answers strictly grounded in that retrieved evidence.
 
-First, each ConvFinQA record is processed into retrieval chunks. The table is represented
-in two ways: by table column and by table metric. This helps the system answer both
-period-based questions, where the user asks about a value in a specific year or period,
-and metric-based questions, where the user asks about how one financial metric changes
-across periods. The pre-text and post-text are also chunked into sentence windows so that
-the system can use surrounding narrative context from the source document.
+Each ConvFinQA record is first processed into retrieval chunks. The table is represented in two complementary ways: by column and by metric. This enables the system to handle both period-based questions (e.g., values for a specific year) and metric-based questions (e.g., how a financial metric changes over time). In addition, the pre-text and post-text are segmented into sentence-level windows, allowing the model to incorporate relevant narrative context from the source document.
 
-The benchmark dialogue is deliberately not chunked. This means the system does not index
-the original ConvFinQA questions, gold answers, or gold calculation programs. This is
-important because including them would risk leaking the answer into the retrieval context
-and would make the task much less meaningful.
+At query time, relevant chunks are retrieved from the same source record and inserted into a prompt, along with structured table values available for use. The model is required to produce a single structured output consisting of a scalar answer, supporting citations, and—when necessary—a calculation program.
 
-When a user asks a question, the system retrieves evidence chunks from the same source
-record. These chunks are inserted into a prompt along with structured table values that
-the model is allowed to use. The model is instructed to return a single structured answer:
-a scalar answer, a list of supporting citations, and, when arithmetic is needed, a
-calculation program.
+For direct lookup questions, the answer can be copied directly from the retrieved evidence. For arithmetic questions, the model does not generate free-form calculations. Instead, it represents the solution as a sequence of operations over retrieved values. This program is then executed by the system, which produces the final result. By separating value selection from arithmetic execution, this approach improves transparency and reduces reliance on the model’s ability to perform calculations correctly in natural language.
 
-For direct lookup questions, the model can copy the answer from the retrieved evidence.
-For arithmetic questions, the model does not just return a free-text calculation. Instead,
-it describes the calculation as a sequence of operations over retrieved table values. The
-system then executes that calculation itself and formats the final answer. This separates
-reasoning about which values to use from the arithmetic execution, making the final result
-easier to inspect and less dependent on the model doing maths correctly in prose.
+## Evaluation
 
-The project also includes a chat workflow so that a user can ask questions against a
-selected ConvFinQA record, see the answer, view the calculation trace where available, and
-inspect the cited chunks. Previously seen questions can be cached, although the current
-cache is simple and is discussed further in the future work section.
-## Error Analysis
-Lorem ipsum dolor sit amet consectetur adipiscing elit
 ## Future Work
 
 Caching.

@@ -1,14 +1,14 @@
+import time
 import tomllib
 import uuid
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 import requests
 from pydantic import BaseModel
 
 from src.logger import get_logger
 from src.utils.http_utils import serialize_response, supported_http_method
-import time
 
 logger = get_logger("model_download")
 
@@ -175,8 +175,11 @@ class OllamaQwenClient:
         return False
 
     def _extract_output(self, data: dict[str, Any]) -> str:
-        if "message" in data and "content" in data["message"]:
-            return data["message"]["content"]
+        message = data.get("message")
+        if isinstance(message, dict):
+            content = message.get("content")
+            if isinstance(content, str):
+                return content
         raise ValueError("Unsupported model response shape")
 
     def build_payload(
@@ -266,7 +269,13 @@ class OllamaQwenClient:
             timeout=60,
         )
         response.raise_for_status()
-        return response.json()["embedding"]
+        response_payload = response.json()
+        if not isinstance(response_payload, dict):
+            raise ValueError("Expected embedding JSON object response")
+        embedding = response_payload.get("embedding")
+        if not isinstance(embedding, list):
+            raise ValueError("Expected embedding list response")
+        return cast(list[float], embedding)
 
     def get_config(self) -> ModelConfig:
         return self.config

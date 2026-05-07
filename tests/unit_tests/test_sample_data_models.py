@@ -13,8 +13,8 @@ from src.data_types import (
     ChunkType,
     ConvFinQARecord,
     EmbeddedChunk,
-    RetrievedChunkRecord,
     RetrievalChunk,
+    RetrievedChunkRecord,
 )
 from src.db_service.mappers import (
     retrieval_chunk_to_embedding_table,

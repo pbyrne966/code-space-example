@@ -7,9 +7,10 @@ evaluation logic you want, then ask for a review.
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 from time import perf_counter
-from typing import Annotated, List, Dict, Any
+from typing import Annotated
 
 import typer
 from pydantic import BaseModel, Field
@@ -18,7 +19,6 @@ from src.data_types import ConvFinQARecord
 from src.logger import get_logger
 from src.rag_service import RagAnswer
 from src.runtime import AppState, build_context
-import random
 
 logger = get_logger("rag_evaluation")
 
@@ -79,8 +79,8 @@ def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
 
 
 def pull_random_record_ids(
-    records: List[ConvFinQARecord], sample_size: int = 10
-) -> List[ConvFinQARecord]:
+    records: list[ConvFinQARecord], sample_size: int = 10
+) -> list[ConvFinQARecord]:
     random_sample = random.sample([d for d in records], k=sample_size)
     return random_sample
 

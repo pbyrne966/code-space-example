@@ -1,9 +1,11 @@
 import json
 import os
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pytest_bdd import given, scenario, then, when
+from sqlalchemy.engine import Engine
 
 from scripts import setup_db
 from src.chunking_service.data_loader import ProcessLayer
@@ -196,7 +198,7 @@ def ingestion_result(
     store = build_retriever(db_engine, model_client)
     process_layer = ProcessLayer(
         db_service=store,
-        raw_file_src=sample_context["raw_path"],  # type: ignore[arg-type]
+        raw_file_src=cast(Path, sample_context["raw_path"]),
         model_client=model_client,
     )
 
@@ -224,7 +226,7 @@ def period_ingestion_result(
     store = build_retriever(db_engine, model_client)
     process_layer = ProcessLayer(
         db_service=store,
-        raw_file_src=period_context["raw_path"],  # type: ignore[arg-type]
+        raw_file_src=cast(Path, period_context["raw_path"]),
         model_client=model_client,
     )
 
@@ -244,7 +246,7 @@ def chat_context(ingestion_result: dict[str, object]) -> dict[str, object]:
     db_engine = ingestion_result["db_engine"]
     assert isinstance(record_id, str)
 
-    chat_service = build_chat_service(db_engine)  # type: ignore[arg-type]
+    chat_service = build_chat_service(cast(Engine, db_engine))
     chat_session = chat_service.start_or_resume_session(record_id)
 
     return {

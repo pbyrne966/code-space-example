@@ -1,9 +1,10 @@
 import re
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import count
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from src.data_types import (
     ChunkType,
@@ -157,6 +158,7 @@ def _table_values_for_metric(
         for table_column, value in column_values.items()
     ]
 
+
 def create_common_fields(
     record: ConvFinQARecord, record_index: int, split: SplitName, source_file: Path
 ) -> dict[str, Any]:
@@ -198,7 +200,7 @@ def chunk_record(
         metric: str | None = None,
         matched_metrics: list[str] | None = None,
         table_column: str | None = None,
-        table_values: list[dict[str, TableValue]] | None = None,
+        table_values: Sequence[TableValue] | None = None,
         years: list[str] | None = None,
         months: list[int] | None = None,
         quarters: list[int] | None = None,
@@ -222,7 +224,7 @@ def chunk_record(
                 metric=metric,
                 matched_metrics=matched_metrics or [],
                 table_column=table_column,
-                table_values=table_values or [],  # type: ignore
+                table_values=table_values or [],
                 years=years or [],
                 months=months or [],
                 quarters=quarters or [],
@@ -248,7 +250,7 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_ROW,
             text=_format_table_row(record.id, table_column, values),
             table_column=table_column,
-            table_values=_table_values_for_column(table_column, values),  # type: ignore
+            table_values=_table_values_for_column(table_column, values),
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,
@@ -267,7 +269,7 @@ def chunk_record(
             chunk_type=ChunkType.TABLE_METRIC,
             text=_format_table_metric(record.id, metric, column_values),
             metric=metric,
-            table_values=_table_values_for_metric(metric, column_values),  # type: ignore
+            table_values=_table_values_for_metric(metric, column_values),
             years=period_data.years,
             months=period_data.months,
             quarters=period_data.quarters,

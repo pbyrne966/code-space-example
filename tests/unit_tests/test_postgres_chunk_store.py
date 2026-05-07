@@ -1,7 +1,9 @@
 import unittest
+from typing import cast
 from unittest.mock import Mock
 
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.engine import Engine
 from sqlalchemy.schema import CreateTable
 from sqlalchemy.sql import select
 
@@ -23,7 +25,7 @@ class FakeEngine:
 
 class PostgresChunkStoreTest(unittest.TestCase):
     def _compile_period_filter(self, period_data: PeriodData) -> str:
-        store = PostgresChunkStore(engine=FakeEngine())  # type: ignore[arg-type]
+        store = PostgresChunkStore(engine=cast(Engine, FakeEngine()))
         statement = store._apply_period_filters(
             select(RetrievalChunkTable),
             period_data,
@@ -40,7 +42,7 @@ class PostgresChunkStoreTest(unittest.TestCase):
         self.assertIn("embedding VECTOR NOT NULL", ddl)
 
     def test_setup_rejects_non_postgresql_engines(self) -> None:
-        store = PostgresChunkStore(engine=FakeEngine())  # type: ignore[arg-type]
+        store = PostgresChunkStore(engine=cast(Engine, FakeEngine()))
 
         with self.assertRaisesRegex(ValueError, "requires a PostgreSQL engine"):
             store.setup()
@@ -50,7 +52,7 @@ class PostgresChunkStoreTest(unittest.TestCase):
         execute_result = Mock()
         execute_result.scalars.return_value = [896]
         session.execute.return_value = execute_result
-        store = PostgresChunkStore(engine=FakeEngine())  # type: ignore[arg-type]
+        store = PostgresChunkStore(engine=cast(Engine, FakeEngine()))
 
         with self.assertRaisesRegex(
             ValueError,
