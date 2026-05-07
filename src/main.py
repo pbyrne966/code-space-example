@@ -74,7 +74,7 @@ def record_cached_answer(
     return response
 
 
-def retirieve_fn(
+def retrieve_fn(
     chat_service: PostgresChatService,
     message: str,
     session: ChatSessionRecord,
@@ -105,7 +105,7 @@ def retirieve_fn(
     return response
 
 
-def process_quistion(
+def process_question(
     message: str,
     record_id: str,
     session: ChatSessionRecord,
@@ -124,7 +124,7 @@ def process_quistion(
         )
 
     if response is None:
-        response = retirieve_fn(
+        response = retrieve_fn(
             chat_service, message, session, answer_service, record_id
         )
 
@@ -149,7 +149,7 @@ def chat(
         if message.strip().lower() in {"exit", "quit"}:
             break
 
-        response: RagAnswer | None = process_quistion(
+        response: RagAnswer | None = process_question(
             message,
             record_id,
             session,

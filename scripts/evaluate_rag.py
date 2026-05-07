@@ -15,7 +15,7 @@ from src.chunking_service.chunking import chunk_record
 from src.data_types import ChatSessionRecord, ConvFinQARecord, SplitName
 from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
-from src.main import process_quistion
+from src.main import process_question
 from src.rag_service import RagAnswer
 from src.runtime import build_context
 
@@ -32,7 +32,7 @@ class EvaluationExample(BaseModel):
     gold_program: str | None = None
     split: str | None = None
     expected_citation_ids: list[str] = Field(default_factory=list)
-    quistion_index: str
+    question_index: str
 
 
 class ExampleResult(BaseModel):
@@ -48,9 +48,9 @@ class ExampleResult(BaseModel):
     tokens_used: int = 0
 
 
-class QuistionComplexity(BaseModel):
+class QuestionComplexity(BaseModel):
     tokens_used: int
-    quistion_index: str
+    question_index: str
     expected_citation_ids: list[str]
 
 
@@ -65,10 +65,10 @@ class EvaluationSummary(BaseModel):
     citation_validity: float | None = None
     average_latency_seconds: float | None = None
     problematic_record_ids: list[str] = Field(default_factory=list)
-    qustion_complexity: dict[str, list[QuistionComplexity]] = Field(
+    question_complexity: dict[str, list[QuestionComplexity]] = Field(
         default_factory=dict
     )
-    # List of records:chunk_id:quistion_idx which went above the latency average
+    # List of records:chunk_id:question_idx which went above the latency average
     prompts_above_avg_latency: list[str]
 
 
@@ -148,7 +148,7 @@ def build_examples(
                     record_index=idx,
                     source_file=source_file,
                 ),
-                quistion_index=f"record_idx:{idx}:quistion_idx:{turn_index}",
+                question_index=f"record_idx:{idx}:question_idx:{turn_index}",
             )
             examples.append(example)
 
@@ -200,7 +200,8 @@ def evaluate_one(
         )
         latency_seconds = perf_counter() - start
 
-        assert predicted is not None, "Could not predict"
+        if predicted is None:
+            raise ValueError("Could not predict")
 
         return ExampleResult(
             example=example,
@@ -232,7 +233,7 @@ def summarize_results(
     results: list[ExampleResult], records: list[Any]
 ) -> EvaluationSummary:
     """Aggregate per-example results into headline metrics."""
-    # Look at the quistion and the timing -> see how quistion complexity influces the timing of the response
+    # Look at question timing to understand how complexity influences response time.
 
     failed_examples = 0
     problematic_record_id = set()
@@ -243,15 +244,15 @@ def summarize_results(
         if latency.latency_seconds is not None
     ]
     average_latency = sum(average_latency_array) // len(average_latency_array)
-    amount_of_tokens_per_quistion = defaultdict(list)
+    amount_of_tokens_per_question = defaultdict(list)
     prompts_above_latency = []
 
     for result in results:
-        amount_of_tokens_per_quistion[result.example.record_id].append(
-            QuistionComplexity(
+        amount_of_tokens_per_question[result.example.record_id].append(
+            QuestionComplexity(
                 **{
                     "tokens_used": result.tokens_used,
-                    "quistion_index": result.example.quistion_index,
+                    "question_index": result.example.question_index,
                     "expected_citation_ids": result.example.expected_citation_ids,
                 }
             )
@@ -264,12 +265,11 @@ def summarize_results(
             or not result.citation_valid
         ):
             failed_examples += 1
-            # Might to reference further here but this is fine for now
             problematic_record_id.add(result.example.record_id)
 
         if (result.latency_seconds or 0.0) > average_latency:
             prompts_above_latency.append(
-                f"{result.example.record_id}:{result.example.quistion_index}"
+                f"{result.example.record_id}:{result.example.question_index}"
             )
 
     evaluation_summary = EvaluationSummary(
@@ -277,8 +277,8 @@ def summarize_results(
         answered_examples=len(results),
         failed_examples=failed_examples,
         problematic_record_ids=sorted(problematic_record_id),
-        qustion_complexity=cast(
-            dict[str, list[QuistionComplexity]], dict(amount_of_tokens_per_quistion)
+        question_complexity=cast(
+            dict[str, list[QuestionComplexity]], dict(amount_of_tokens_per_question)
         ),
         prompts_above_avg_latency=prompts_above_latency,
     )
@@ -315,7 +315,7 @@ def main(
     def retrieve_partial(
         message: str, record_id: str, session: ChatSessionRecord
     ) -> RagAnswer | None:
-        return process_quistion(
+        return process_question(
             message,
             record_id,
             session=session,

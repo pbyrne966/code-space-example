@@ -5,6 +5,7 @@ from scripts.evaluate_rag import (
     ExampleResult,
     build_citation_ids,
     evaluate_answer,
+    evaluate_one,
     summarize_results,
 )
 from src.chunking_service.chunking import chunk_record
@@ -77,7 +78,7 @@ def test_evaluate_answer_accepts_percentage_values() -> None:
         turn_index=0,
         question="What was the percentage change?",
         gold_answer="142.4%",
-        quistion_index="record_idx:0:quistion_idx:0",
+        question_index="record_idx:0:question_idx:0",
     )
     predicted = RagAnswer(answer="142.4%", citations=[])
 
@@ -92,7 +93,7 @@ def test_summarize_results_reports_failed_examples() -> None:
         question="What was revenue?",
         gold_answer="100.0",
         expected_citation_ids=["chunk-1"],
-        quistion_index="record_idx:0:quistion_idx:0",
+        question_index="record_idx:0:question_idx:0",
     )
     result = ExampleResult(
         example=example,
@@ -105,3 +106,27 @@ def test_summarize_results_reports_failed_examples() -> None:
 
     assert summary.failed_examples == 1
     assert summary.problematic_record_ids == ["record-1"]
+
+
+def test_evaluate_one_records_error_when_prediction_is_missing() -> None:
+    """Missing predictions are handled in normal Python, even with asserts disabled."""
+    example = EvaluationExample(
+        record_id="record-1",
+        turn_index=0,
+        question="What was revenue?",
+        gold_answer="100.0",
+        expected_citation_ids=["chunk-1"],
+        question_index="record_idx:0:question_idx:0",
+    )
+
+    class FakeChatService:
+        def get_or_create_session(self, record_id: str):
+            return "session"
+
+    result = evaluate_one(
+        retrieval_fn=lambda question, record_id, session: None,
+        chat_service=FakeChatService(),  # type: ignore[arg-type]
+        example=example,
+    )
+
+    assert result.error == "Could not predict"

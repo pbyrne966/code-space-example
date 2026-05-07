@@ -21,15 +21,15 @@ def main() -> None:
     db_service = PostgresChunkStore(db_engine)
     settings = context.settings
     if settings is None:
-        raise ValueError("No settings could be initilized")
+        raise ValueError("No settings could be initialized")
 
     client = context.client
     if client is None:
-        raise ValueError("Could not initilise client")
+        raise ValueError("Could not initialize client")
 
     retriever = context.retriever
     if retriever is None:
-        raise ValueError("Could not initilise client")
+        raise ValueError("Could not initialize retriever")
 
     ProcessLayer(
         db_service=db_service,

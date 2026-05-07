@@ -188,7 +188,9 @@ class OllamaQwenClient:
             if content is None:
                 raise ValueError("Model did not produce a response")
 
-            tokens_used = len((message.get("usage", {})).get("prompt_tokens", []))
+            prompt_tokens = data.get("prompt_eval_count") or 0
+            completion_tokens = data.get("eval_count") or 0
+            tokens_used = int(prompt_tokens) + int(completion_tokens)
             return RawModelOutput(output=cast(str, content), tokens_used=tokens_used)
 
         raise ValueError("Unsupported model response shape")
@@ -279,12 +281,10 @@ class OllamaQwenClient:
             },
             timeout=60,
         )
-        response.raise_for_status()
-        response_payload = response.json()
-        if not isinstance(response_payload, dict):
-            raise ValueError("Expected embedding JSON object response")
+
+        response_payload = serialize_response(response)
         embedding = response_payload.get("embedding")
-        if not isinstance(embedding, list):
+        if embedding is None or not isinstance(embedding, list):
             raise ValueError("Expected embedding list response")
         return cast(list[float], embedding)
 

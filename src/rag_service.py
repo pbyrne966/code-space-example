@@ -29,7 +29,7 @@ class RagAnswer(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    user_quistion: str | None = None
+    user_question: str | None = None
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
     calculation_program: CalculationProgram | None = Field(default=None, exclude=True)
@@ -273,7 +273,7 @@ Calculation response example:
         model_answer: RagAnswer,
         table_value_candidates: list[TableValueCandidate],
         context_blocks: list[str],
-        quistion: str,
+        question: str,
     ) -> RagAnswer:
         final_answer = model_answer.answer
         turn_programs = None
@@ -303,7 +303,7 @@ Calculation response example:
 
         return model_answer.model_copy(
             update={
-                "user_quistion": quistion,
+                "user_question": question,
                 "answer": final_answer,
                 "calculation_program": None,
                 "turn_program": turn_programs,
