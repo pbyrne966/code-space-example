@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from src.logger import get_logger
 from src.utils.http_utils import serialize_response, supported_http_method
+import time
 
 logger = get_logger("model_download")
 
