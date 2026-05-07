@@ -104,17 +104,29 @@ class RagServiceTest(unittest.TestCase):
             prompt,
         )
         self.assertIn("answer must be only the value, not a sentence.", prompt)
-        self.assertIn('"answer": number', prompt)
         self.assertIn(
             'If the answer is not in the context, set answer to "I don\'t know".',
             prompt,
         )
         self.assertIn(
-            "calculation_program must always be null.",
+            "Set calculation_program to null only when the answer is a direct lookup or text answer.",
             prompt,
         )
-        self.assertNotIn("Calculation program schema:", prompt)
-        self.assertNotIn("Available table values for calculation:", prompt)
+        self.assertIn(
+            "When arithmetic is needed, return a non-null calculation_program",
+            prompt,
+        )
+        self.assertIn(
+            "For percent answers, include a final percentage step",
+            prompt,
+        )
+        self.assertIn("Calculation program schema:", prompt)
+        self.assertIn("Available table values for calculation:", prompt)
+        self.assertIn('"value_id": "chunk-1:value:0"', prompt)
+        self.assertIn('"answer": "14.1%"', prompt)
+        self.assertIn('"operation": "percentage"', prompt)
+        self.assertIn('"step_index": 1', prompt)
+        self.assertNotIn('"answer": "The percentage change is 14.1%."', prompt)
         self.assertNotIn("Match both the requested metric phrase", prompt)
 
     def test_answer_validates_json_and_calls_model(self) -> None:
@@ -219,6 +231,55 @@ class RagServiceTest(unittest.TestCase):
 
         self.assertEqual(result.answer, "50")
         self.assertEqual(result.turn_program, "subtract(100, 50)")
+
+    def test_answer_formats_computed_percentage_answer(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output=(
+                '{"answer":"100%","citations":["chunk-1"],'
+                '"calculation_program":{"steps":['
+                '{"operation":"subtract",'
+                '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
+                '{"kind":"table_value","value_id":"chunk-1:value:1"}]},'
+                '{"operation":"divide",'
+                '"operands":[{"kind":"step_result","step_index":0},'
+                '{"kind":"table_value","value_id":"chunk-1:value:1"}]},'
+                '{"operation":"percentage",'
+                '"operands":[{"kind":"step_result","step_index":1}]}]}}'
+            ),
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=FakeRetriever(),
+        )
+
+        result = service.answer("What was the percentage increase?", "record-1")
+
+        self.assertEqual(result.answer, "100%")
+        self.assertEqual(
+            result.turn_program,
+            "subtract(100, 50), divide(#0, 50), percentage(#1)",
+        )
+
+    def test_answer_uses_computed_answer_when_model_answer_differs(self) -> None:
+        model_client = MockOllamaClient(
+            model_name="test-model",
+            chat_output=(
+                '{"answer":"3","citations":["chunk-1"],'
+                '"calculation_program":{"steps":[{"operation":"divide",'
+                '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
+                '{"kind":"literal","literal":50.0}]}]}}'
+            ),
+        )
+        service = RAGService(
+            model_client=model_client,
+            retriever=FakeRetriever(),
+        )
+
+        result = service.answer("How many times larger was revenue?", "record-1")
+
+        self.assertEqual(result.answer, "2")
+        self.assertEqual(result.turn_program, "divide(100, 50)")
 
     def test_answer_requires_explicit_calculation_program_key(self) -> None:
         model_client = MockOllamaClient(

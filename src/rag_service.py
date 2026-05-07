@@ -16,6 +16,14 @@ from src.model_service.models import ModelClient
 logger = get_logger("rag_service")
 
 
+def _format_calculated_answer(value: float, is_percentage: bool) -> str:
+    if is_percentage:
+        return f"{value:.1f}".rstrip("0").rstrip(".") + "%"
+    if value.is_integer():
+        return str(int(value))
+    return f"{value:.6g}"
+
+
 class RawRagAnswer(BaseModel):
     """Raw structured response returned by the model."""
 
@@ -154,6 +162,7 @@ Rules:
 - When arithmetic is needed, return a non-null calculation_program using only available_table_values or literal numbers from the question.
 - For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
 - For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
+- For percent answers, include a final percentage step that converts the ratio to percent scale.
 - Be concise and precise.
 
 Calculation program schema:
@@ -178,7 +187,6 @@ No-calculation response example:
 
 Calculation response example:
 {{
-  "answer": "The percentage change is 14.1%.",
   "answer": "14.1%",
   "citations": ["chunk_id_1"],
   "calculation_program": {{
@@ -195,6 +203,12 @@ Calculation response example:
         "operands": [
           {{"kind": "step_result", "step_index": 0}},
           {{"kind": "table_value", "value_id": "chunk_id_1:value:1"}}
+        ]
+      }},
+      {{
+        "operation": "percentage",
+        "operands": [
+          {{"kind": "step_result", "step_index": 1}}
         ]
       }}
     ]
@@ -218,7 +232,10 @@ Calculation response example:
         final_answer = raw_answer.answer
         turn_programs = None
 
-        if raw_answer.calculation_program is not None:
+        if (
+            raw_answer.calculation_program is not None
+            and raw_answer.calculation_program.steps
+        ):
             calculation_trace = execute_calculation_program(
                 raw_answer.calculation_program,
                 table_value_candidates,
@@ -227,6 +244,14 @@ Calculation response example:
                 raise ValueError(
                     f"Calculation program failed: {calculation_trace.error}"
                 )
+            if calculation_trace.final_result is None:
+                raise ValueError("Calculation program produced no final result")
+
+            final_operation = raw_answer.calculation_program.steps[-1].operation
+            final_answer = _format_calculated_answer(
+                calculation_trace.final_result,
+                is_percentage=final_operation == "percentage",
+            )
             if calculation_trace.turn_programs:
                 turn_programs = ", ".join([*calculation_trace.turn_programs])
 
