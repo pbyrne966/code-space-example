@@ -9,7 +9,7 @@ from src.data_types import (
     RetrievalChunk,
     RetrievedChunkRecord,
 )
-from src.rag_service import RagAnswer, RAGService, RawRagAnswer
+from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 LOOKUP_ANSWER = '{"answer":"100","citations":["chunk-1"],"calculation_program":null}'
@@ -252,7 +252,7 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(len(model_client.prompts), 1)
         self.assertEqual(
             model_client.response_formats[0],
-            RawRagAnswer.model_json_schema(),
+            "json",
         )
         self.assertEqual(retriever.calls[0][2].dates, [])
         self.assertIn("Conversation history:", model_client.prompts[0])
@@ -388,7 +388,7 @@ class RagServiceTest(unittest.TestCase):
         self.assertEqual(result.answer, "2")
         self.assertEqual(result.turn_program, "divide(100, 50)")
 
-    def test_answer_requires_explicit_calculation_program_key(self) -> None:
+    def test_answer_defaults_missing_calculation_program_to_lookup(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
             chat_output='{"answer":"100","citations":["chunk-1"]}',
@@ -398,8 +398,10 @@ class RagServiceTest(unittest.TestCase):
             retriever=FakeRetriever(),
         )
 
-        with self.assertRaises(ValueError):
-            service.answer("What is revenue?", "record-1")
+        result = service.answer("What is revenue?", "record-1")
+
+        self.assertEqual(result.answer, "100")
+        self.assertIsNone(result.calculation_program)
 
     def test_answer_raises_when_calculation_program_fails(self) -> None:
         model_client = MockOllamaClient(

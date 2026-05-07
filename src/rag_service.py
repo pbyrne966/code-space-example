@@ -11,7 +11,7 @@ from src.chunking_service.period_extraction import PeriodData, extract_period_da
 from src.data_types import ChatHistoryPair, RetrievalChunk, RetrievedChunkRecord
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
-from src.model_service.models import ModelClient
+from src.model_service.models import ModelClient, ModelOutput
 
 logger = get_logger("rag_service")
 
@@ -24,16 +24,6 @@ def _format_calculated_answer(value: float, is_percentage: bool) -> str:
     return f"{value:.6g}"
 
 
-class RawRagAnswer(BaseModel):
-    """Raw structured response returned by the model."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    answer: str = Field(min_length=1)
-    citations: list[str] = Field(default_factory=list)
-    calculation_program: CalculationProgram | None
-
-
 class RagAnswer(BaseModel):
     """Final scalar answer with supporting evidence and optional computation trace."""
 
@@ -42,8 +32,10 @@ class RagAnswer(BaseModel):
     user_quistion: str | None = None
     answer: str = Field(min_length=1)
     citations: list[str] = Field(default_factory=list)
+    calculation_program: CalculationProgram | None = Field(default=None, exclude=True)
     turn_program: str | None = None
     context_blocks: list[str] = Field(default_factory=list)
+    tokens_used: int = Field(default=0)
 
 
 class RAGService:
@@ -265,29 +257,33 @@ Calculation response example:
 
 """.strip()
 
-    def _parse_answer(self, output: str) -> RawRagAnswer:
+    def _parse_answer(self, model_output: ModelOutput) -> RagAnswer:
         try:
-            return RawRagAnswer.model_validate_json(output)
+            answer = RagAnswer.model_validate_json(model_output.output)
         except ValidationError:
-            logger.warning("Model returned invalid RawRagAnswer JSON: %s", output)
+            logger.warning(
+                "Model returned invalid RagAnswer JSON: %s",
+                model_output.output,
+            )
             raise
+        return answer.model_copy(update={"tokens_used": model_output.tokens_used})
 
     def build_final_answer(
         self,
-        raw_answer: RawRagAnswer,
+        model_answer: RagAnswer,
         table_value_candidates: list[TableValueCandidate],
         context_blocks: list[str],
         quistion: str,
     ) -> RagAnswer:
-        final_answer = raw_answer.answer
+        final_answer = model_answer.answer
         turn_programs = None
 
         if (
-            raw_answer.calculation_program is not None
-            and raw_answer.calculation_program.steps
+            model_answer.calculation_program is not None
+            and model_answer.calculation_program.steps
         ):
             calculation_trace = execute_calculation_program(
-                raw_answer.calculation_program,
+                model_answer.calculation_program,
                 table_value_candidates,
             )
             if calculation_trace.error is not None:
@@ -297,7 +293,7 @@ Calculation response example:
             if calculation_trace.final_result is None:
                 raise ValueError("Calculation program produced no final result")
 
-            final_operation = raw_answer.calculation_program.steps[-1].operation
+            final_operation = model_answer.calculation_program.steps[-1].operation
             final_answer = _format_calculated_answer(
                 calculation_trace.final_result,
                 is_percentage=final_operation == "percentage",
@@ -305,12 +301,14 @@ Calculation response example:
             if calculation_trace.turn_programs:
                 turn_programs = ", ".join([*calculation_trace.turn_programs])
 
-        return RagAnswer(
-            user_quistion=quistion,
-            answer=final_answer,
-            citations=raw_answer.citations,
-            turn_program=turn_programs,
-            context_blocks=context_blocks,
+        return model_answer.model_copy(
+            update={
+                "user_quistion": quistion,
+                "answer": final_answer,
+                "calculation_program": None,
+                "turn_program": turn_programs,
+                "context_blocks": context_blocks,
+            }
         )
 
     def answer(
@@ -340,9 +338,9 @@ Calculation response example:
         logger.debug("RAG prompt:\n%s", prompt)
         model_output = self.model_client.query_single(
             prompt,
-            response_format=RawRagAnswer.model_json_schema(),
+            response_format="json",
         )
-        raw_answer = self._parse_answer(model_output.output)
+        model_answer = self._parse_answer(model_output)
         return self.build_final_answer(
-            raw_answer, table_value_candidates, context_blocks, question
+            model_answer, table_value_candidates, context_blocks, question
         )

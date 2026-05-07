@@ -44,6 +44,12 @@ class ModelOutput(BaseModel):
     prompt: str
     output: str
     raw_response: dict[str, Any] | None = None
+    tokens_used: int
+
+
+class RawModelOutput(BaseModel):
+    tokens_used: int
+    output: str
 
 
 class ModelClient(Protocol):
@@ -66,6 +72,7 @@ class OllamaQwenClient:
     def __init__(self, model_config: ModelConfig) -> None:
         self.config = model_config
         self.is_model_ready = False
+        self.base_url = self.config.base_url.rstrip("/")
 
     def initialize(self) -> None:
         logger.info(
@@ -74,7 +81,7 @@ class OllamaQwenClient:
         )
 
         if not self.server_alive():
-            logger.error("Model server is not reachable at %s", self.config.base_url)
+            logger.error("Model server is not reachable at %s", self.base_url)
             raise RuntimeError("Model server is not reachable")
 
         logger.info("Model server is alive")
@@ -91,7 +98,7 @@ class OllamaQwenClient:
         logger.info("Model is ready: %s", self.config.model_name)
 
     def model_exists(self) -> bool:
-        url = f"{self.config.base_url.rstrip('/')}/api/tags"
+        url = f"{self.base_url}/api/tags"
 
         try:
             response = requests.get(url, timeout=3)
@@ -109,7 +116,7 @@ class OllamaQwenClient:
             return False
 
     def fetch_model(self) -> None:
-        url = f"{self.config.base_url.rstrip('/')}/api/pull"
+        url = f"{self.base_url}/api/pull"
 
         logger.info("Ensuring model is available: %s", self.config.model_name)
 
@@ -133,7 +140,7 @@ class OllamaQwenClient:
             raise RuntimeError("Failed to fetch model") from exc
 
     def server_alive(self, retries: int = 5, delay: float = 1.0) -> bool:
-        url = f"{self.config.base_url.rstrip('/')}/api/tags"
+        url = f"{self.base_url}/api/tags"
 
         for attempt in range(1, retries + 1):
             logger.info("Checking model server health, attempt %s/%s", attempt, retries)
@@ -174,12 +181,16 @@ class OllamaQwenClient:
         self.is_model_ready = False
         return False
 
-    def _extract_output(self, data: dict[str, Any]) -> str:
+    def _extract_output(self, data: dict[str, Any]) -> RawModelOutput:
         message = data.get("message")
         if isinstance(message, dict):
             content = message.get("content")
-            if isinstance(content, str):
-                return content
+            if content is None:
+                raise ValueError("Model did not produce a response")
+
+            tokens_used = len((message.get("usage", {})).get("prompt_tokens", []))
+            return RawModelOutput(output=cast(str, content), tokens_used=tokens_used)
+
         raise ValueError("Unsupported model response shape")
 
     def build_payload(
@@ -230,8 +241,7 @@ class OllamaQwenClient:
         response_format: dict[str, Any] | str | None = None,
     ) -> ModelOutput:
         query_url = (
-            f"{self.config.base_url.rstrip('/')}/"
-            f"{self.config.chat_endpoint.lstrip('/')}"
+            f"{self.base_url.rstrip('/')}/{self.config.chat_endpoint.lstrip('/')}"
         )
 
         response = requests.request(
@@ -243,14 +253,15 @@ class OllamaQwenClient:
 
         data = serialize_response(response)
 
-        output = self._extract_output(data)
+        raw_response = self._extract_output(data)
 
         logger.info("Model request completed request_id=%s", model_input.request_id)
 
         return ModelOutput(
             request_id=model_input.request_id,
             prompt=model_input.prompt,
-            output=output,
+            output=raw_response.output,
+            tokens_used=raw_response.tokens_used,
             raw_response=data,
         )
 
@@ -261,7 +272,7 @@ class OllamaQwenClient:
 
     def embed(self, text: str) -> list[float]:
         response = requests.post(
-            f"{self.config.base_url}/api/embeddings",
+            f"{self.base_url}/api/embeddings",
             json={
                 "model": self.config.model_name,
                 "prompt": text,

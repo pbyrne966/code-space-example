@@ -73,4 +73,5 @@ class MockOllamaClient(ModelClient):
             prompt=prompt,
             output=self.chat_output,
             raw_response=raw_response,
+            tokens_used=0,
         )
