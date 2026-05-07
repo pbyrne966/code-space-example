@@ -242,6 +242,39 @@ class SampleDataModelValidationTest(unittest.TestCase):
         for question in record.dialogue.conv_questions:
             self.assertNotIn(question, chunk_text)
 
+        for answer in record.dialogue.conv_answers:
+            self.assertNotIn(answer, chunk_text)
+
+        for turn_program in record.dialogue.turn_program:
+            self.assertNotIn(turn_program, chunk_text)
+
+    def test_document_text_is_chunked_for_retrieval(self) -> None:
+        sample_file = sorted(SAMPLE_DATA_DIR.glob("convfinqa_*_sample.json"))[0]
+        sample_payload = json.loads(sample_file.read_text())
+        record = ConvFinQARecord(**sample_payload["records"][0])
+
+        chunks = chunk_record(
+            record=record,
+            split=sample_payload["split"],
+            record_index=0,
+            source_file=sample_file,
+        )
+        pre_text_chunks = [
+            chunk for chunk in chunks if chunk.chunk_type == ChunkType.PRE_TEXT
+        ]
+        post_text_chunks = [
+            chunk for chunk in chunks if chunk.chunk_type == ChunkType.POST_TEXT
+        ]
+
+        self.assertTrue(pre_text_chunks)
+        self.assertTrue(post_text_chunks)
+        pre_text_first_sentence = record.doc.pre_text.strip().split(".")[0]
+        post_text_first_sentence = record.doc.post_text.strip().split(".")[0]
+        self.assertIn(pre_text_first_sentence, pre_text_chunks[0].text)
+        self.assertIn(post_text_first_sentence, post_text_chunks[0].text)
+        self.assertTrue(all(not chunk.table_values for chunk in pre_text_chunks))
+        self.assertTrue(all(not chunk.table_values for chunk in post_text_chunks))
+
     def test_table_chunks_preserve_structured_values(self) -> None:
         sample_file = sorted(SAMPLE_DATA_DIR.glob("convfinqa_*_sample.json"))[0]
         sample_payload = json.loads(sample_file.read_text())

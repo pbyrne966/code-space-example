@@ -52,6 +52,74 @@ def _format_table_metric(
     return f"Record {record_id}. Table metric {metric}. {value_text}"
 
 
+def _split_sentences(text: str) -> list[str]:
+    return [
+        sentence.strip()
+        for sentence in SENTENCE_BOUNDARY_RE.split(text)
+        if sentence.strip()
+    ]
+
+
+def chunk_via_sentence_window(
+    given_text: str, window_size: int = 3, stride: int = 2
+) -> list[TextWindow]:
+    sentences = _split_sentences(given_text)
+    if not sentences:
+        stripped_text = given_text.strip()
+        if not stripped_text:
+            return []
+
+        return [
+            TextWindow(
+                text=stripped_text,
+                start_sentence=0,
+                end_sentence=0,
+            )
+        ]
+
+    windows: list[TextWindow] = []
+    for start_index in range(0, len(sentences), stride):
+        window_sentences = sentences[start_index : start_index + window_size]
+        if not window_sentences:
+            continue
+        windows.append(
+            TextWindow(
+                text=" ".join(window_sentences),
+                start_sentence=start_index,
+                end_sentence=start_index + len(window_sentences) - 1,
+            )
+        )
+        if start_index + window_size >= len(sentences):
+            break
+    return windows
+
+
+def _normalize_metric_text(text: str) -> str:
+    return NON_WORD_RE.sub(" ", text.lower()).strip()
+
+
+def _extract_table_metrics(table: dict[str, dict[str, Any]]) -> list[NormalizedMetric]:
+    metrics: list[NormalizedMetric] = []
+    seen_metrics: set[str] = set()
+    for values in table.values():
+        for metric in values:
+            normalized_metric = _normalize_metric_text(metric)
+            if normalized_metric and normalized_metric not in seen_metrics:
+                seen_metrics.add(normalized_metric)
+                metrics.append((metric, normalized_metric))
+    return metrics
+
+
+def _find_metrics_in_text(text: str, metrics: list[NormalizedMetric]) -> list[str]:
+    normalized_text = f" {_normalize_metric_text(text)} "
+    matched_metrics: list[str] = []
+    for metric, normalized_metric in metrics:
+        if f" {normalized_metric} " in normalized_text:
+            matched_metrics.append(metric)
+
+    return matched_metrics
+
+
 def _numeric_value(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
@@ -89,7 +157,6 @@ def _table_values_for_metric(
         for table_column, value in column_values.items()
     ]
 
-
 def create_common_fields(
     record: ConvFinQARecord, record_index: int, split: SplitName, source_file: Path
 ) -> dict[str, Any]:
@@ -121,6 +188,7 @@ def chunk_record(
     chunk_records: list[RetrievalChunk] = []
     chunk_counter = count()
     common_fields = create_common_fields(record, record_index, split, source_file)
+    table_metrics = _extract_table_metrics(record.doc.table)
     source_file_name = source_file.name
 
     def append_chunk(
@@ -165,6 +233,14 @@ def chunk_record(
             )
         )
 
+    for window in chunk_via_sentence_window(record.doc.pre_text):
+        append_chunk(
+            local_id=f"sent_{window.start_sentence}_{window.end_sentence}",
+            chunk_type=ChunkType.PRE_TEXT,
+            text=f"Record {record.id}. Context before table. {window.text}",
+            matched_metrics=_find_metrics_in_text(window.text, table_metrics),
+        )
+
     for column_index, (table_column, values) in enumerate(record.doc.table.items()):
         period_data = extract_period_data([table_column])
         append_chunk(
@@ -198,6 +274,14 @@ def chunk_record(
             days=period_data.days,
             dates=period_data.dates,
             period_labels=period_data.period_labels,
+        )
+
+    for window in chunk_via_sentence_window(record.doc.post_text):
+        append_chunk(
+            local_id=f"sent_{window.start_sentence}_{window.end_sentence}",
+            chunk_type=ChunkType.POST_TEXT,
+            text=f"Record {record.id}. Context after table. {window.text}",
+            matched_metrics=_find_metrics_in_text(window.text, table_metrics),
         )
 
     return chunk_records
