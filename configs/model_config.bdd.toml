@@ -1,6 +1,5 @@
 base_url = "http://localhost:11434"
 model_name = "bdd-mock-model"
-model_embed = "bdd-mock-model"
 chat_endpoint = "/api/chat/"
 batch_endpoint = "/api/chat"
 max_tokens = 512

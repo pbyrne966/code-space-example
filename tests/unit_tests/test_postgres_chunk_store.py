@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import Mock
 
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
@@ -8,7 +9,6 @@ from src.chunking_service.period_extraction import PeriodData
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.db_service.schemas import (
     ChunkEmbeddingTable,
-    MAX_EMBEDDING_DIMENSION,
     RetrievalChunkTable,
 )
 
@@ -37,13 +37,26 @@ class PostgresChunkStoreTest(unittest.TestCase):
             )
         )
 
-        self.assertIn(f"embedding VECTOR({MAX_EMBEDDING_DIMENSION}) NOT NULL", ddl)
+        self.assertIn("embedding VECTOR NOT NULL", ddl)
 
     def test_setup_rejects_non_postgresql_engines(self) -> None:
         store = PostgresChunkStore(engine=FakeEngine())  # type: ignore[arg-type]
 
         with self.assertRaisesRegex(ValueError, "requires a PostgreSQL engine"):
             store.setup()
+
+    def test_embedding_dimension_mismatch_raises_clear_error(self) -> None:
+        session = Mock()
+        execute_result = Mock()
+        execute_result.scalars.return_value = [896]
+        session.execute.return_value = execute_result
+        store = PostgresChunkStore(engine=FakeEngine())  # type: ignore[arg-type]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "stored chunks use 896 dimensions.*returned 3584",
+        ):
+            store._validate_embedding_dimension(session, "qwen2.5:7b", 3584)
 
     def test_period_filter_uses_postgres_jsonb_containment(self) -> None:
         statement = select(RetrievalChunkTable).where(

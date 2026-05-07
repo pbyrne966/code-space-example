@@ -5,7 +5,6 @@ from collections.abc import Callable
 from src.data_types import RetrievalChunk, SourceRecordMetadata
 
 from .schemas import (
-    MAX_EMBEDDING_DIMENSION,
     ChunkEmbeddingTable,
     RetrievalChunkTable,
     SourceRecordTable,
@@ -81,11 +80,6 @@ def retrieval_chunk_to_embedding_table(
     embedding = embedding_fn(chunk.text)
     if not embedding:
         raise ValueError("embedding_fn returned an empty embedding vector")
-    if len(embedding) != MAX_EMBEDDING_DIMENSION:
-        raise ValueError(
-            "embedding_fn returned an embedding vector with "
-            f"{len(embedding)} dimensions; expected {MAX_EMBEDDING_DIMENSION}"
-        )
 
     return ChunkEmbeddingTable(
         chunk_id=chunk.chunk_id,

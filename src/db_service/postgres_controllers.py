@@ -282,11 +282,15 @@ class PostgresChunkStore(ChunkStore):
             session.flush()
             for chunk in chunks:
                 session.merge(retrieval_chunk_to_table(chunk))
-                session.merge(
-                    retrieval_chunk_to_embedding_table(
-                        chunk, embedding_fn, embedding_model
-                    )
+                embedding_row = retrieval_chunk_to_embedding_table(
+                    chunk, embedding_fn, embedding_model
                 )
+                self._validate_embedding_dimension(
+                    session,
+                    embedding_model,
+                    embedding_row.embedding_dimension,
+                )
+                session.merge(embedding_row)
             session.commit()
 
     def get_chunks_for_record(self, record_id: str) -> list[RetrievalChunk]:
@@ -324,6 +328,8 @@ class PostgresChunkStore(ChunkStore):
             raise ValueError("retrieve requires an embedding function and model")
 
         query_embedding = embedding_fn(query)
+        if not query_embedding:
+            raise ValueError("embedding_fn returned an empty embedding vector")
         stmt = (
             select(
                 RetrievalChunkTable,
@@ -345,6 +351,11 @@ class PostgresChunkStore(ChunkStore):
         stmt = self._apply_period_filters(stmt, period_data)
 
         with self.session_factory() as session:
+            self._validate_embedding_dimension(
+                session,
+                embedding_model,
+                len(query_embedding),
+            )
             return [
                 RetrievedChunkRecord(
                     chunk=row.RetrievalChunkTable.to_pydantic(),
@@ -352,6 +363,33 @@ class PostgresChunkStore(ChunkStore):
                 )
                 for row in session.execute(stmt).all()
             ]
+
+    def _validate_embedding_dimension(
+        self,
+        session: Session,
+        embedding_model: str,
+        embedding_dimension: int,
+    ) -> None:
+        dimensions = set(
+            session.execute(
+                select(ChunkEmbeddingTable.embedding_dimension)
+                .where(ChunkEmbeddingTable.embedding_model == embedding_model)
+                .distinct()
+            ).scalars()
+        )
+        if not dimensions:
+            return
+        if dimensions == {embedding_dimension}:
+            return
+
+        stored = ", ".join(str(dimension) for dimension in sorted(dimensions))
+        raise ValueError(
+            "Embedding dimension mismatch for model "
+            f"{embedding_model!r}: stored chunks use {stored} dimensions, "
+            f"but the current embedding function returned {embedding_dimension}. "
+            "Re-ingest chunks with the configured embedding model, or configure "
+            "the embedding model that created the stored rows."
+        )
 
     def _apply_period_filters(self, statement, period_data: PeriodData | None):
         if period_data is None:

@@ -35,6 +35,7 @@ from src.data_types import ChatMessageRecord, ChatSessionRecord
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 MAX_EMBEDDING_DIMENSION = 896
+EMBEDDING_VECTOR_DIMENSION: int | None = None
 
 
 class Base(DeclarativeBase):
@@ -211,7 +212,7 @@ class ChunkEmbeddingTable(Base):
     embedding_model: Mapped[str] = mapped_column(String, primary_key=True)
     embedding_dimension: Mapped[int] = mapped_column(Integer, nullable=False)
     embedding: Mapped[list[float]] = mapped_column(
-        Vector(MAX_EMBEDDING_DIMENSION),
+        Vector(EMBEDDING_VECTOR_DIMENSION),
         nullable=False,
     )
 

@@ -25,10 +25,7 @@ class ProcessLayerChunkStoreTest(unittest.TestCase):
             raw_file.write_text(json.dumps(raw_payload))
 
             chunk_store = MockChunkStore()
-            model_client = MockOllamaClient(
-                model_name="mock-qwen-chat",
-                model_embed="mock-qwen-embed",
-            )
+            model_client = MockOllamaClient(model_name="mock-qwen")
             process_layer = ProcessLayer(
                 db_service=chunk_store,
                 raw_file_src=raw_file,
@@ -45,7 +42,7 @@ class ProcessLayerChunkStoreTest(unittest.TestCase):
             {chunk.chunk_id for chunk in chunk_store.chunks},
             {chunk.chunk_id for chunk in processed_chunks},
         )
-        self.assertEqual(chunk_store.embedding_model, "mock-qwen-embed")
+        self.assertEqual(chunk_store.embedding_model, "mock-qwen")
         self.assertEqual(
             model_client.embedded_texts,
             [chunk.text for chunk in processed_chunks],

@@ -1,11 +1,10 @@
-import time
 import tomllib
 import uuid
 from pathlib import Path
 from typing import Any, Protocol
 
 import requests
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 
 from src.logger import get_logger
 from src.utils.http_utils import serialize_response, supported_http_method
@@ -16,7 +15,6 @@ logger = get_logger("model_download")
 class ModelConfig(BaseModel):
     base_url: str
     model_name: str
-    model_embed: str | None = Field(default=None)
     chat_endpoint: str
     batch_endpoint: str | None = None
     max_tokens: int
@@ -24,12 +22,6 @@ class ModelConfig(BaseModel):
     temperature: float = 0.0
     top_p: float = 1.0
     seed: int | None = 42
-
-    @model_validator(mode="after")
-    def default_embedding_model(self) -> "ModelConfig":
-        if self.model_embed is None:
-            self.model_embed = self.model_name
-        return self
 
     @classmethod
     def load_from_toml(cls, path: Path) -> "ModelConfig":
@@ -76,9 +68,8 @@ class OllamaQwenClient:
 
     def initialize(self) -> None:
         logger.info(
-            "Initializing model client for model=%s embed_model=%s",
+            "Initializing model client for model=%s",
             self.config.model_name,
-            self.config.model_embed,
         )
 
         if not self.server_alive():
@@ -268,7 +259,7 @@ class OllamaQwenClient:
         response = requests.post(
             f"{self.config.base_url}/api/embeddings",
             json={
-                "model": self.config.model_embed,
+                "model": self.config.model_name,
                 "prompt": text,
             },
             timeout=60,

@@ -10,7 +10,6 @@ class MockOllamaClient(ModelClient):
     def __init__(
         self,
         model_name: str = "mock-qwen",
-        model_embed: str | None = None,
         chat_output: str = (
             '{"answer":"mock answer","citations":[],"calculation_program":null}'
         ),
@@ -18,7 +17,6 @@ class MockOllamaClient(ModelClient):
         self._config = ModelConfig(
             base_url="http://example.com",
             model_name=model_name,
-            model_embed=model_embed or model_name,
             chat_endpoint="/chat",
             max_tokens=32,
             allowed_timeout=5,
