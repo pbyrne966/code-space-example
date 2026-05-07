@@ -1,9 +1,3 @@
-"""Evaluation scaffold for ConvFinQA RAG quality checks.
-
-This script is intentionally a stub: fill in the TODO functions with the
-evaluation logic you want, then ask for a review.
-"""
-
 from __future__ import annotations
 
 import json
@@ -16,9 +10,13 @@ import typer
 from pydantic import BaseModel, Field
 
 from src.data_types import ConvFinQARecord
+from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
 from src.rag_service import RagAnswer
-from src.runtime import AppState, build_context
+from src.runtime import build_context
+from src.main import process_quistion, validate_app_state
+from typing import Callable, List
+from functools import partial
 
 logger = get_logger("rag_evaluation")
 
@@ -56,6 +54,7 @@ class EvaluationSummary(BaseModel):
     answer_accuracy: float | None = None
     citation_validity: float | None = None
     average_latency_seconds: float | None = None
+    problematic_record_ids: List[str] = []
 
 
 class EvaluationReport(BaseModel):
@@ -63,6 +62,9 @@ class EvaluationReport(BaseModel):
 
     summary: EvaluationSummary
     results: list[ExampleResult] = Field(default_factory=list)
+
+
+def build_citation_ids(): ...
 
 
 def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
@@ -93,11 +95,6 @@ def build_examples(
 
     for record in records:
         for turn_index, question in enumerate(record.dialogue.conv_questions):
-            if turn_index >= len(record.dialogue.conv_answers):
-                raise ValueError(
-                    f"Record {record.id} is missing answer for turn {turn_index}"
-                )
-
             gold_program = (
                 record.dialogue.turn_program[turn_index]
                 if turn_index < len(record.dialogue.turn_program)
@@ -117,7 +114,6 @@ def build_examples(
 
 
 def evaluate_retrieval(
-    context: AppState,
     example: EvaluationExample,
     top_k: int,
 ) -> bool:
@@ -131,44 +127,58 @@ def evaluate_answer(
     numeric_tolerance: float,
 ) -> bool:
     """Return whether the predicted answer matches the gold answer."""
-    raise NotImplementedError("TODO: compare text/numeric answers")
+    matched = str(float(predicted.answer)) == str(float(example.gold_answer))
+    if matched:
+        return matched
+    elif numeric_tolerance == 0.0:
+        return False
+
+    float_answer = float(predicted.answer)
+    gold_answer = float(example.gold_answer)
+    answers = [float_answer, gold_answer]
+    diff = abs(max(answers) - min(answers))
+    return diff > numeric_tolerance
 
 
 def evaluate_citations(
-    context: AppState,
     predicted: RagAnswer,
     example: EvaluationExample,
 ) -> bool:
     """Return whether citations are valid and support the answer."""
-    raise NotImplementedError("TODO: validate citation ids and faithfulness")
+    # Have a build citation id function
+    # This might have to come from parsing the query and grabing the source chunk
+    example_citations = [example]
+    return sorted(predicted.citations) == sorted(example_citations)
 
 
 def evaluate_one(
-    context: AppState,
+    retieval_fn: Callable[[str, str, PostgresChatService], RagAnswer],
+    chat_service: PostgresChatService,
     example: EvaluationExample,
     top_k: int,
     numeric_tolerance: float,
 ) -> ExampleResult:
     """Run the complete RAG evaluation path for one example."""
-    if context.answer_service is None:
-        raise ValueError("Answer service was not initialised")
 
     start = perf_counter()
     try:
-        predicted = context.answer_service.answer(example.question, example.record_id)
+        chat_session = chat_service.get_or_create_session(record_id=example.record_id)
+        predicted: RagAnswer = retieval_fn(
+            message=example.message, record_id=example.record_id, session=chat_session
+        )
         latency_seconds = perf_counter() - start
 
         return ExampleResult(
             example=example,
             predicted_answer=predicted,
             latency_seconds=latency_seconds,
-            retrieval_recall_at_k=evaluate_retrieval(context, example, top_k),
+            retrieval_recall_at_k=evaluate_retrieval(example, top_k),
             answer_correct=evaluate_answer(
                 predicted,
                 example,
                 numeric_tolerance,
             ),
-            citation_valid=evaluate_citations(context, predicted, example),
+            citation_valid=evaluate_citations(predicted, example),
         )
     except Exception as exc:
         logger.exception(
@@ -183,15 +193,25 @@ def evaluate_one(
         )
 
 
-def summarize_results(results: list[ExampleResult]) -> EvaluationSummary:
+def summarize_results(results: list[ExampleResult], record_ids: List[str]) -> EvaluationSummary:
     """Aggregate per-example results into headline metrics."""
-    raise NotImplementedError("TODO: aggregate booleans and latency into metrics")
+    # Look at the quistion and the timing -> see how quistion complexity influces the timing of the response
+    
+    failed_examples = 0
+    problematic_record_id = set()
 
 
-def write_report(report: EvaluationReport, output_path: Path) -> None:
-    """Write the report as JSON."""
-    raise NotImplementedError("TODO: serialize report to output_path")
+    for result in results:
+        if result.error is not None or not result.answer_correct or not result.citation_valid:
+            failed_examples += 1
+            # Might to reference further here but this is fine for now
+            problematic_record_id.add(result.record_id)
 
+    evaluation_summary = EvaluationSummary(
+        total_examples=len(record_ids),
+        answered_examples=len(results),
+        failed_examples=0
+    )
 
 def main(
     split: Annotated[str, typer.Option(help="Dataset split to evaluate.")] = "dev",
@@ -214,17 +234,23 @@ def main(
 ) -> None:
     """Run RAG evaluation for a ConvFinQA split."""
     context = build_context()
-    settings = context.settings
-    if settings is None:
-        raise ValueError("Settings were not initialised")
+    validate_app_state(context)
 
+    settings = context.settings
     records = load_records(settings.raw_data_path, split)
     example_records = pull_random_record_ids(records, limit or 10)
     examples = build_examples(example_records)
 
+    retreival_fn = partial(
+        process_quistion,
+        settings=settings,
+        chat_service=context.chat_service,
+        answer_service=settings.answer_service,
+    )
+
     results = [
         evaluate_one(
-            context=context,
+            retrieval_fn=retreival_fn,
             example=example,
             top_k=top_k,
             numeric_tolerance=numeric_tolerance,
@@ -236,9 +262,8 @@ def main(
         summary=summarize_results(results),
         results=results,
     )
-    write_report(report, output)
 
-    typer.echo(report.summary.model_dump_json(indent=2))
+    # typer.echo(report.summary.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":

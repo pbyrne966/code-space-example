@@ -9,6 +9,7 @@ from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
 from src.rag_service import RagAnswer, RAGService
 from src.runtime import build_context
+from src.config import Settings
 
 logger = get_logger("typer_logger")
 
@@ -104,17 +105,33 @@ def retirieve_fn(
     return response
 
 
-@app.command()
-def chat(
-    record_id: str = typer.Argument(..., help="ID of the record to chat about"),
-) -> None:
-    """Open an interactive RAG chat session."""
-    context = build_context()
-    retriever = context.retriever
-    chat_service = context.chat_service
-    answer_service = context.answer_service
-    settings = context.settings
+def process_quistion(
+    message: str,
+    record_id: str,
+    session: ChatSessionRecord,
+    settings: Settings,
+    chat_service: PostgresChatService,
+    answer_service: RAGService,
+):
+    response = None
+    if settings.caching and (cached := chat_service.get_cached(message, record_id)):
+        response = record_cached_answer(
+            chat_service,
+            message,
+            session,
+            cached,
+            record_id,
+        )
 
+    if response is None:
+        response = retirieve_fn(
+            chat_service, message, session, answer_service, record_id
+        )
+
+    return response
+
+
+def validate_app_state(settings, retriever, chat_service, answer_service):
     if settings is None:
         rich_print("[red]Settings could not be built[/red]")
         raise typer.Exit(code=1)
@@ -137,34 +154,33 @@ def chat(
         )
         raise typer.Exit(code=2)
 
+
+@app.command()
+def chat(
+    record_id: str = typer.Argument(..., help="ID of the record to chat about"),
+) -> None:
+    """Open an interactive RAG chat session."""
+    context = build_context()
+    retriever = context.retriever
+    chat_service = context.chat_service
+    answer_service = context.answer_service
+    settings = context.settings
+
+    validate_app_state(settings, retriever, chat_service, answer_service)
     session = chat_service.start_or_resume_session(record_id)
     rich_print(f"[dim]chat session: {session.session_id} for record: {record_id}[/dim]")
 
     while True:
         message = input(">>> ")
-
-        response: RagAnswer | None = None
-
         if message.strip().lower() in {"exit", "quit"}:
             break
 
-        if settings.caching and (cached := chat_service.get_cached(message, record_id)):
-            response = record_cached_answer(
-                chat_service,
-                message,
-                session,
-                cached,
-                record_id,
-            )
-
-        if response is None:
-            response = retirieve_fn(
-                chat_service, message, session, answer_service, record_id
-            )
+        response: RagAnswer | None = process_quistion(
+            message, record_id, session, settings, chat_service, answer_service
+        )
 
         if response is None:
             continue
-
         rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
         if response.turn_program:
             rich_print(f"[dim]turn program: {response.turn_program}[/dim]")
