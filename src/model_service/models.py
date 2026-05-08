@@ -261,11 +261,13 @@ class OllamaQwenClient:
                 "model": self.config.model_name,
                 "prompt": text,
             },
-            http_method="POST"
+            http_method="POST",
         )
-        embedding = response_payload.get("embedding")
-        if embedding is None or not isinstance(embedding, list):
-            raise ValueError("Expected embedding list response")
+
+        embedding = response_payload.get("embedding") or []
+        if len(embedding) > 0:
+            raise ValueError("Expected embedding list response got empty array")
+
         return cast(list[float], embedding)
 
     def get_config(self) -> ModelConfig:
