@@ -146,6 +146,8 @@ class OllamaQwenClient:
                     http_method="GET",
                 )
                 logger.info("Server is alive")
+                return True
+
             except requests.RequestException as exc:
                 logger.warning("Server health check error: %s", exc)
             time.sleep(delay)
@@ -261,7 +263,7 @@ class OllamaQwenClient:
                 "model": self.config.model_name,
                 "prompt": text,
             },
-            http_method="POST"
+            http_method="POST",
         )
         embedding = response_payload.get("embedding")
         if embedding is None or not isinstance(embedding, list):
