@@ -209,8 +209,7 @@ class OllamaQwenClient:
     def query_single(
         self,
         prompt: str,
-        http_method: str = "POST",
-        response_format: dict[str, Any] | str | None = None,
+        response_format: dict[str, Any] | str = "json",
     ) -> ModelOutput:
         request_id = str(uuid.uuid4())
         query_url = f"{self.base_url}{self.config.chat_endpoint}"
@@ -221,7 +220,7 @@ class OllamaQwenClient:
         data = self.send_request(
             query_url,
             payload,
-            http_method,
+            "POST",
         )
         raw_response = self._extract_output(data)
 
@@ -251,8 +250,7 @@ class OllamaQwenClient:
 
     def query_batch(self, prompts: list[str]) -> list[ModelOutput]:
         logger.info("Sending fake batch request batch_size=%s", len(prompts))
-
-        return [self.query_single(prompt, "POST") for prompt in prompts]
+        return [self.query_single(prompt) for prompt in prompts]
 
     def embed(self, text: str) -> list[float]:
         response_payload = self.send_request(
