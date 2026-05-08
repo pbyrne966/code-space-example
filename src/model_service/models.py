@@ -215,7 +215,7 @@ class OllamaQwenClient:
         request_id = str(uuid.uuid4())
         query_url = f"{self.base_url}{self.config.chat_endpoint}"
         logger.info("Sending single model request request_id=%s", request_id)
-        model_input = (ModelInput(prompt=prompt, request_id=request_id),)
+        model_input = ModelInput(prompt=prompt, request_id=request_id)
         payload = self.build_payload(model_input.prompt, response_format)
 
         data = self.send_request(
@@ -238,7 +238,7 @@ class OllamaQwenClient:
         query_url,
         payload: Dict[str, Any],
         http_method: str,
-    ) -> ModelOutput:
+    ) -> dict:
         method = supported_http_method(http_method)
         response = requests.request(
             method=method,
