@@ -13,6 +13,9 @@ from src.db_service.postgres_controllers import ChunkStore
 from src.model_service.models import ModelClient
 
 from .chunking import chunk_record
+from src.logger import get_logger
+
+logger = get_logger("data_loader")
 
 
 class ProcessLayer:
@@ -48,24 +51,32 @@ class ProcessLayer:
 
     def process(self) -> list[RetrievalChunk]:
         raw_data = self.open_data_from_path()
-        chunks: list[RetrievalChunk] = []
+
+        embed_fn = self.model_client.embed
+        model_name = self.model_client.get_config().model_name
+        all_chunks = []
 
         self.db_service.setup()
         for split, record_index, line in self._iter_split_records(raw_data):
-            record = ConvFinQARecord(**line)
-            chunks.extend(
-                chunk_record(
+            try:
+                record = ConvFinQARecord(**line)
+                chunks = chunk_record(
                     record=record,
                     split=split,
                     record_index=record_index,
                     source_file=self.raw_file_src,
                 )
-            )
-        embed_fn = self.model_client.embed
-        model_name = self.model_client.get_config().model_name
-        self.db_service.add_chunks(
-            chunks,
-            embedding_fn=embed_fn,
-            embedding_model=model_name,
-        )
-        return chunks
+                self.db_service.add_chunks(
+                    chunks,
+                    embedding_fn=embed_fn,
+                    embedding_model=model_name,
+                )
+                all_chunks.extend(chunks)
+            except Exception as err:
+                error = str(err)
+                logger.error(
+                    "Could not ingest record -> %s error %s", record.record_id, error
+                )
+                continue
+
+        return all_chunks
