@@ -20,11 +20,8 @@ def supported_http_method(http_method: str) -> str:
 
 
 def serialize_response(given_response: Response) -> dict[str, Any]:
-    status_code = given_response.status_code
-    if status_code >= 400:
-        raise ValueError("Http Request Failed")
     try:
-        # Seriliaze to a given pydantic type
+        given_response.raise_for_status()
         response_payload = given_response.json()
         if not isinstance(response_payload, dict):
             raise ValueError("Expected JSON object response")

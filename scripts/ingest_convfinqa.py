@@ -6,6 +6,7 @@ from src.chunking_service.data_loader import ProcessLayer
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
 from src.runtime import build_ingestion_context
+from pathlib import Path
 
 logger = get_logger("ingest_script")
 
@@ -29,7 +30,9 @@ def main() -> None:
 
     ProcessLayer(
         db_service=db_service,
-        raw_file_src=settings.raw_data_path,
+        raw_file_src=Path(
+            "/workspaces/tomorro-code-space/data/evaluation/convfinqa_tiny_10.json"
+        ),
         model_client=client,
     ).process()
     logger.info("Ingestion finished")

@@ -2,7 +2,7 @@ import time
 import tomllib
 import uuid
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, Dict
 
 import requests
 from pydantic import BaseModel
@@ -98,12 +98,10 @@ class OllamaQwenClient:
         logger.info("Model is ready: %s", self.config.model_name)
 
     def model_exists(self) -> bool:
-        url = f"{self.base_url}/api/tags"
-
         try:
-            response = requests.get(url, timeout=3)
-            response.raise_for_status()
-            data = response.json()
+            data = self.send_request(
+                f"{self.base_url}/api/tags", payload={}, http_method="GET"
+            )
 
             self.does_model_exist = any(
                 model.get("name") == self.config.model_name
@@ -124,7 +122,6 @@ class OllamaQwenClient:
             response = requests.post(
                 url,
                 json={"name": self.config.model_name},
-                timeout=600,
             )
             response.raise_for_status()
             logger.info("Model fetch/pull completed for %s", self.config.model_name)
@@ -140,33 +137,23 @@ class OllamaQwenClient:
             raise RuntimeError("Failed to fetch model") from exc
 
     def server_alive(self, retries: int = 60, delay: float = 2.0) -> bool:
-        url = f"{self.base_url}/api/tags"
-
         for attempt in range(1, retries + 1):
             logger.info("Checking model server health, attempt %s/%s", attempt, retries)
-
             try:
-                response = requests.get(url, timeout=3)
-                if response.ok:
-                    return True
-
-                logger.warning(
-                    "Server health check failed with status=%s body=%s",
-                    response.status_code,
-                    response.text,
+                self.send_request(
+                    f"{self.base_url}/api/tags",
+                    payload={},
+                    http_method="GET",
                 )
-
+                logger.info("Server is alive")
             except requests.RequestException as exc:
                 logger.warning("Server health check error: %s", exc)
-
             time.sleep(delay)
-
         return False
 
     def wait_until_model_ready(self, retries: int = 10, delay: float = 2.0) -> bool:
         for attempt in range(1, retries + 1):
             logger.info("Checking model readiness, attempt %s/%s", attempt, retries)
-
             try:
                 result = self.query_single("Return only the word ready.", "POST")
                 self.is_model_ready = bool(result.output.strip())
@@ -226,38 +213,17 @@ class OllamaQwenClient:
         response_format: dict[str, Any] | str | None = None,
     ) -> ModelOutput:
         request_id = str(uuid.uuid4())
-        method = supported_http_method(http_method)
-
+        query_url = f"{self.base_url}{self.config.chat_endpoint}"
         logger.info("Sending single model request request_id=%s", request_id)
+        model_input = (ModelInput(prompt=prompt, request_id=request_id),)
+        payload = self.build_payload(model_input.prompt, response_format)
 
-        return self.send_request(
-            ModelInput(prompt=prompt, request_id=request_id),
-            method,
-            response_format=response_format,
+        data = self.send_request(
+            query_url,
+            payload,
+            http_method,
         )
-
-    def send_request(
-        self,
-        model_input: ModelInput,
-        http_method: str,
-        response_format: dict[str, Any] | str | None = None,
-    ) -> ModelOutput:
-        query_url = (
-            f"{self.base_url.rstrip('/')}/{self.config.chat_endpoint.lstrip('/')}"
-        )
-
-        response = requests.request(
-            method=http_method,
-            url=query_url,
-            json=self.build_payload(model_input.prompt, response_format),
-            timeout=self.config.allowed_timeout,
-        )
-
-        data = serialize_response(response)
-
         raw_response = self._extract_output(data)
-
-        logger.info("Model request completed request_id=%s", model_input.request_id)
 
         return ModelOutput(
             request_id=model_input.request_id,
@@ -267,22 +233,36 @@ class OllamaQwenClient:
             raw_response=data,
         )
 
+    def send_request(
+        self,
+        query_url,
+        payload: Dict[str, Any],
+        http_method: str,
+    ) -> ModelOutput:
+        method = supported_http_method(http_method)
+        response = requests.request(
+            method=method,
+            url=query_url,
+            json=payload,
+            timeout=self.config.allowed_timeout,
+        )
+        data = serialize_response(response)
+        return data
+
     def query_batch(self, prompts: list[str]) -> list[ModelOutput]:
         logger.info("Sending fake batch request batch_size=%s", len(prompts))
 
         return [self.query_single(prompt, "POST") for prompt in prompts]
 
     def embed(self, text: str) -> list[float]:
-        response = requests.post(
+        response_payload = self.send_request(
             f"{self.base_url}/api/embeddings",
-            json={
+            payload={
                 "model": self.config.model_name,
                 "prompt": text,
             },
-            timeout=60,
+            http_method="POST"
         )
-
-        response_payload = serialize_response(response)
         embedding = response_payload.get("embedding")
         if embedding is None or not isinstance(embedding, list):
             raise ValueError("Expected embedding list response")
