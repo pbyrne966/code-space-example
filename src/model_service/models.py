@@ -216,14 +216,12 @@ class OllamaQwenClient:
         logger.info("Sending single model request request_id=%s", request_id)
         model_input = ModelInput(prompt=prompt, request_id=request_id)
         payload = self.build_payload(model_input.prompt, response_format)
-
         data = self.send_request(
             query_url,
             payload,
             "POST",
         )
         raw_response = self._extract_output(data)
-
         return ModelOutput(
             request_id=model_input.request_id,
             prompt=model_input.prompt,
