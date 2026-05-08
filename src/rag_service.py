@@ -50,36 +50,10 @@ class RAGService:
         """Format previous turns and their evidence for prompt conditioning."""
         if not chat_history:
             return None
-
         parsed_history = []
         for turn_index, history in enumerate(reversed(chat_history), start=1):
-            try:
-                assistant_content = RagAnswer.model_validate_json(
-                    history.assistant.content
-                )
-            except ValidationError:
-                logger.warning(
-                    "Skipping unparsable assistant history for session_id=%s "
-                    "message_id=%s",
-                    history.assistant.session_id,
-                    history.assistant.message_id,
-                )
-                continue
-
-            context_text = "\n\n".join(assistant_content.context_blocks)
-            parsed_history.append(
-                f"""
-[Prior turn {turn_index}]
-User question: {history.user_question.content}
-Assistant answer: {assistant_content.answer}
-Assistant citations: {json.dumps(assistant_content.citations)}
-Prior retrieved context:
-{context_text}
-""".strip()
-            )
-
-        if not parsed_history:
-            return None
+            user_quistion = history.user_question
+            parsed_history.append(f"User Qustion at Turn {turn_index + 1}: {user_quistion}")
         return "\n\n---\n\n".join(parsed_history)
 
     def build_context_block(
@@ -122,45 +96,6 @@ table_values: {json.dumps(table_values)}
 
         return candidates
 
-    def log_retrieval_debug(
-        self,
-        question: str,
-        record_id: str,
-        period_data: PeriodData,
-        results: list[RetrievedChunkRecord],
-    ) -> None:
-        logger.debug(
-            "RAG retrieval question=%r record_id=%s period_data=%s",
-            question,
-            record_id,
-            period_data,
-        )
-        for index, row in enumerate(results, start=1):
-            chunk = row.chunk
-            logger.debug(
-                "RAG retrieved source=%s distance=%s chunk_id=%s metric=%s "
-                "table_column=%s years=%s period_labels=%s text=%s",
-                index,
-                row.distance,
-                chunk.chunk_id,
-                chunk.metric,
-                chunk.table_column,
-                chunk.years,
-                chunk.period_labels,
-                chunk.text,
-            )
-            for value in chunk.table_values:
-                logger.debug(
-                    "RAG candidate source=%s chunk_id=%s metric=%s column=%s "
-                    "value=%s numeric_value=%s",
-                    index,
-                    chunk.chunk_id,
-                    value.metric,
-                    value.table_column,
-                    value.value,
-                    value.numeric_value,
-                )
-
     def build_prompt(
         self,
         question: str,
@@ -181,18 +116,12 @@ table_values: {json.dumps(table_values)}
 You answer financial table questions using only the retrieved context.
 
 Rules:
-- Output a single JSON object only.
-- Do not wrap the output in markdown or extra prose.
-- Return exactly these keys: answer, citations, calculation_program.
-- If the question asks for a value in a specific year, copy the matching value.
-- answer must be only the value, not a sentence.
+- Output a single JSON object only and Return exactly these keys: answer, citations, calculation_program.
 - citations must contain the chunk_id that supports the answer.
-- If the answer is not in the context, set answer to "I don't know".
+- If the answer is not in the context, set answer to "I don't know" and do not invent numbers.
 - Use prior turns only to resolve conversational follow-ups such as "what about in 2008?".
 - Prefer the current retrieved context when it directly supports the answer.
-- If the current retrieved context is ambiguous, you may use prior retrieved context from the conversation history when it supports the resolved question.
-- Do not invent numbers.
-- answer must be a scalar ConvFinQA-style answer only: a number, percentage, or short text value.
+- answer must be a scalar answer only: a number, percentage, or short text value.
 - Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
 - citations must be a JSON array of chunk_id values used to support the answer.
 - Set calculation_program to null only when the answer is a direct lookup or text answer.
@@ -200,7 +129,6 @@ Rules:
 - For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
 - For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
 - For percent answers, include a final percentage step that converts the ratio to percent scale.
-- Be concise and precise.
 
 Calculation program schema:
 {calculation_program_schema}
@@ -227,7 +155,7 @@ No-calculation response example:
 
 Calculation response example:
 {{
-  "answer": "14.1%",
+  "answer": "14.1",
   "citations": ["chunk_id_1"],
   "calculation_program": {{
     "steps": [
@@ -303,9 +231,7 @@ Calculation response example:
 
         return model_answer.model_copy(
             update={
-                "user_question": question,
                 "answer": final_answer,
-                "calculation_program": None,
                 "turn_program": turn_programs,
                 "context_blocks": context_blocks,
             }
@@ -320,7 +246,6 @@ Calculation response example:
         period_data = extract_period_data([question])
         results = self.retriever.retrieve(question, record_id, period_data)
         parsed_session_history = self.parse_chat_history(session_history)
-        self.log_retrieval_debug(question, record_id, period_data, results)
         context_blocks = []
 
         for i, row in enumerate(results, start=1):

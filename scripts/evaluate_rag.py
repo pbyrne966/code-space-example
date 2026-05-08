@@ -18,6 +18,7 @@ from src.logger import get_logger
 from src.main import process_question
 from src.rag_service import RagAnswer
 from src.runtime import build_context
+from collections import OrderedDict
 
 logger = get_logger("rag_evaluation")
 
@@ -60,7 +61,7 @@ class EvaluationSummary(BaseModel):
     total_examples: int = 0
     answered_examples: int = 0
     failed_examples: int = 0
-    retrieval_recall_at_k: float | None = None
+    # retrieval_recall_at_k: float | None = None
     answer_accuracy: float | None = None
     citation_validity: float | None = None
     average_latency_seconds: float | None = None
@@ -70,6 +71,7 @@ class EvaluationSummary(BaseModel):
     )
     # List of records:chunk_id:question_idx which went above the latency average
     prompts_above_avg_latency: list[str]
+    complexity_per_quistion: dict[str, list[QuestionComplexity]]
 
 
 class EvaluationReport(BaseModel):
@@ -236,18 +238,23 @@ def summarize_results(
     # Look at question timing to understand how complexity influences response time.
 
     failed_examples = 0
-    problematic_record_id = set()
-
+    problematic_record_id = OrderedDict()
     average_latency_array = [
         latency.latency_seconds
         for latency in results
         if latency.latency_seconds is not None
     ]
-    average_latency = sum(average_latency_array) // len(average_latency_array)
+    average_latency = sum(average_latency_array) // (len(average_latency_array) or 1)
     amount_of_tokens_per_question = defaultdict(list)
     prompts_above_latency = []
 
+    valid_citations = 0
+    valid_answers = 0
+
     for result in results:
+        valid_answers += result.answer_correct or 0
+        valid_citations += result.citation_valid or 0
+
         amount_of_tokens_per_question[result.example.record_id].append(
             QuestionComplexity(
                 **{
@@ -258,14 +265,13 @@ def summarize_results(
             )
         )
 
-    for result in results:
         if (
             result.error is not None
             or not result.answer_correct
             or not result.citation_valid
         ):
             failed_examples += 1
-            problematic_record_id.add(result.example.record_id)
+            problematic_record_id[result.example.record_id] = None
 
         if (result.latency_seconds or 0.0) > average_latency:
             prompts_above_latency.append(
@@ -276,11 +282,15 @@ def summarize_results(
         total_examples=len(records),
         answered_examples=len(results),
         failed_examples=failed_examples,
-        problematic_record_ids=sorted(problematic_record_id),
+        problematic_record_ids=[*problematic_record_id.keys()],
         question_complexity=cast(
             dict[str, list[QuestionComplexity]], dict(amount_of_tokens_per_question)
         ),
         prompts_above_avg_latency=prompts_above_latency,
+        average_latency_seconds=average_latency,
+        complexity_per_quistion=amount_of_tokens_per_question,
+        citation_validity=(len(results) - (len(results) - valid_citations)) - 1,
+        answer_accuracy=(len(results) - (len(results) - valid_citations)) - 1,
     )
 
     return evaluation_summary

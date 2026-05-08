@@ -60,15 +60,14 @@ class ModelClient(Protocol):
     def query_single(
         self,
         prompt: str,
-        http_method: str = "POST",
-        response_format: dict[str, Any] | str | None = None,
+        response_format: dict[str, Any] | str = "json",
     ) -> ModelOutput: ...
     def query_batch(self, prompts: list[str]) -> list[ModelOutput]: ...
     def embed(self, text: str) -> list[float]: ...
     def get_config(self) -> ModelConfig: ...
 
 
-class OllamaQwenClient:
+class OllamaQwenClient(ModelClient):
     def __init__(self, model_config: ModelConfig) -> None:
         self.config = model_config
         self.is_model_ready = False
@@ -147,7 +146,6 @@ class OllamaQwenClient:
                 )
                 logger.info("Server is alive")
                 return True
-
             except requests.RequestException as exc:
                 logger.warning("Server health check error: %s", exc)
             time.sleep(delay)
