@@ -18,6 +18,7 @@ from src.logger import get_logger
 from src.main import process_question
 from src.rag_service import RagAnswer
 from src.runtime import build_context
+import re
 
 logger = get_logger("rag_evaluation")
 
@@ -54,11 +55,83 @@ class QuestionComplexity(BaseModel):
     expected_citation_ids: list[str]
 
 
+class ContextWindowPerformanceResult(BaseModel):
+    tokens_used: int
+    quistion_correct: bool | None = None
+    latency_seconds: float | None = None
+
+
+class UnrelatedQuistionResult(BaseModel):
+    quistion: str
+    as_expected: bool
+    answer: str | None = None
+
+
+class Qustions(BaseModel):
+    quistions: list[str]
+
+
 # TODO: Imeplement this brother
 # Prescion & Recall -> The Rock Curve and F1 Score
-# Stress Testing & Load Balancer Chain of thought tasks
-# Chain prompts on year and stress test the context window
-# Test for open ended quistions and trick quistions
+
+
+def _normalize_expected_fallback(answer: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]", "", answer.lower())
+
+
+def context_window_performace(
+    context_window_data_path: Path,
+    split: str,
+    chat_service: PostgresChatService,
+    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
+) -> dict[str, ContextWindowPerformanceResult]:
+    context_window_records = load_records(context_window_data_path, split)
+    quistions = build_examples(
+        context_window_records,
+        cast(SplitName, split),
+        context_window_data_path,
+    )
+    context_window_performance: dict[str, ContextWindowPerformanceResult] = {}
+    for step_idx, quistion in enumerate(quistions):
+        evaluated = evaluate_one(retrieval_fn, chat_service, quistion)
+        step_id = f"{step_idx}:{evaluated.predicted_answer.answer if evaluated.predicted_answer is not None else 'null'}"
+        context_window_performance[step_id] = ContextWindowPerformanceResult(
+            tokens_used=evaluated.tokens_used,
+            quistion_correct=evaluated.answer_correct,
+            latency_seconds=evaluated.latency_seconds,
+        )
+
+    return context_window_performance
+
+
+def unrelated_quistions(
+    record_id: str,
+    chat_service: PostgresChatService,
+    unrelated_questions_path: Path,
+    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
+    compare_to: str = "I dont know",
+) -> list[UnrelatedQuistionResult]:
+    unrelated_quistons = Qustions(**json.loads(unrelated_questions_path.read_text()))
+    unrelated_qustions_output: list[UnrelatedQuistionResult] = []
+    chat_session = chat_service.get_or_create_session(record_id=record_id)
+
+    for question in unrelated_quistons.quistions:
+        predicted: RagAnswer | None = retrieval_fn(question, record_id, chat_session)
+        is_expected = predicted is None
+        if predicted is not None:
+            is_expected = _normalize_expected_fallback(
+                predicted.answer
+            ) == _normalize_expected_fallback(compare_to)
+
+        unrelated_qustions_output.append(
+            UnrelatedQuistionResult(
+                quistion=question,
+                as_expected=is_expected,
+                answer=predicted.answer if predicted is not None else None,
+            )
+        )
+
+    return unrelated_qustions_output
 
 
 class EvaluationSummary(BaseModel):
@@ -79,10 +152,12 @@ class EvaluationSummary(BaseModel):
 
 
 class EvaluationReport(BaseModel):
-    """Serializable evaluation payload."""
-
     summary: EvaluationSummary
     results: list[ExampleResult] = Field(default_factory=list)
+    context_window_performance: dict[str, ContextWindowPerformanceResult] = Field(
+        default_factory=dict
+    )
+    unrelated_quistions: list[UnrelatedQuistionResult] = Field(default_factory=list)
 
 
 def build_citation_ids(
@@ -242,7 +317,7 @@ def summarize_results(
     # Look at question timing to understand how complexity influences response time.
 
     failed_examples = 0
-    problematic_record_id = OrderedDict()
+    problematic_record_id: OrderedDict[str, None] = OrderedDict()
     average_latency_array = [
         latency.latency_seconds
         for latency in results
@@ -282,6 +357,9 @@ def summarize_results(
                 f"{result.example.record_id}:{result.example.question_index}"
             )
 
+    answer_accuracy = valid_answers / len(results) if results else None
+    citation_validity = valid_citations / len(results) if results else None
+
     evaluation_summary = EvaluationSummary(
         total_examples=len(records),
         answered_examples=len(results),
@@ -293,8 +371,8 @@ def summarize_results(
         prompts_above_avg_latency=prompts_above_latency,
         average_latency_seconds=average_latency,
         complexity_per_quistion=amount_of_tokens_per_question,
-        citation_validity=(len(results) - (len(results) - valid_citations)) - 1,
-        answer_accuracy=(len(results) - (len(results) - valid_citations)) - 1,
+        citation_validity=citation_validity,
+        answer_accuracy=answer_accuracy,
     )
 
     return evaluation_summary
@@ -314,6 +392,8 @@ def main(
         Path,
         typer.Option(help="Path for the JSON evaluation report."),
     ] = Path("evaluation_results.json"),
+    context_window_data_path: Path | None = None,
+    unrelated_questions_path: Path | None = None,
 ) -> None:
     """Run RAG evaluation for a ConvFinQA split."""
     context = build_context()
@@ -348,9 +428,30 @@ def main(
         for example in examples
     ]
     result_summary = summarize_results(results, example_records)
+
+    context_window_output = {}
+    if context_window_data_path is not None:
+        context_window_output = context_window_performace(
+            context_window_data_path=context_window_data_path,
+            split=split,
+            chat_service=context.chat_service,
+            retrieval_fn=retrieve_partial,
+        )
+
+    unrelated_output = []
+    if unrelated_questions_path is not None:
+        unrelated_output = unrelated_quistions(
+            record_id=example_records[0].id,
+            chat_service=context.chat_service,
+            unrelated_questions_path=unrelated_questions_path,
+            retrieval_fn=retrieve_partial,
+        )
+
     report = EvaluationReport(
         summary=result_summary,
         results=results,
+        context_window_performance=context_window_output,
+        unrelated_quistions=unrelated_output,
     )
 
     output.write_text(report.model_dump_json(indent=4), encoding="utf-8")

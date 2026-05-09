@@ -261,8 +261,6 @@ class ChatSession(Base):
         ),
         Index("ix_chat_sessions_last_message_at", "last_message_at"),
     )
-    # Summary part -> feeding in the chat into a summarizer model ->
-    # deleted = True -> -> give me all session with this id which are deleted = False
     session_id: Mapped[str] = mapped_column(
         String,
         primary_key=True,
