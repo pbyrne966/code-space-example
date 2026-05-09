@@ -2,7 +2,7 @@ import time
 import tomllib
 import uuid
 from pathlib import Path
-from typing import Any, Protocol, cast, Dict
+from typing import Any, Protocol, cast
 
 import requests
 from pydantic import BaseModel
@@ -232,10 +232,10 @@ class OllamaQwenClient(ModelClient):
 
     def send_request(
         self,
-        query_url,
-        payload: Dict[str, Any],
+        query_url: str,
+        payload: dict[str, Any],
         http_method: str,
-    ) -> dict:
+    ) -> dict[str, Any]:
         method = supported_http_method(http_method)
         response = requests.request(
             method=method,

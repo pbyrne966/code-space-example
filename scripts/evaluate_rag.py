@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import random
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
@@ -18,7 +18,6 @@ from src.logger import get_logger
 from src.main import process_question
 from src.rag_service import RagAnswer
 from src.runtime import build_context
-from collections import OrderedDict
 
 logger = get_logger("rag_evaluation")
 
@@ -75,7 +74,6 @@ class EvaluationSummary(BaseModel):
     question_complexity: dict[str, list[QuestionComplexity]] = Field(
         default_factory=dict
     )
-    # List of records:chunk_id:question_idx which went above the latency average
     prompts_above_avg_latency: list[str]
     complexity_per_quistion: dict[str, list[QuestionComplexity]]
 

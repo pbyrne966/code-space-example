@@ -9,12 +9,24 @@ At query time, the service extracts period hints from the question, retrieves ma
 
 For direct lookup questions, the answer can be copied directly from the retrieved evidence. For arithmetic questions, the model selects the relevant values and expresses the calculation as structured operations rather than free-form reasoning text. The system parses the JSON response, validates it against the expected schema, executes the calculation program, and formats the final scalar result. This separates value selection from arithmetic execution, making the calculation trace easier to inspect and reducing reliance on the model to do arithmetic correctly in natural language.
 
+Chat history is stored as explicit user/assistant exchanges. Cached answers are stored separately in an answer-cache table keyed by source record and prompt hash. When a cache hit is reused, the cached payload is validated and then recorded as a fresh assistant response linked to the current user message. This keeps the chat history contract clean: history reflects what happened in the conversation, while the cache remains an implementation detail.
+
 ## Evaluation
+
+The current automated checks cover chunk creation, Postgres schema mapping, vector retrieval filters, chat-history pairing, cache replay, RAG prompt construction, JSON validation, calculation execution, and evaluation helpers. The unit suite is designed to run without live model or database services, while the BDD suites can be enabled for Postgres and full-stack model-backed behaviour.
+
+Current local quality gates:
+
+```text
+uv run pytest tests/unit_tests
+uv run mypy src
+uv run ruff check src tests scripts
+```
 
 ## Future Work
 
 ### Cache Invalidation
-Caching is another area that could be strengthened. At present, cached answers are not fully tied to the conditions under which they were generated—such as the model used, prompt version, retrieval settings, embedding model, source record ID, or cited chunks. Without this context, a cached response may appear valid even after underlying configurations have changed, leading to stale or misleading results.
+Caching is now separated from chat history, but it could still be strengthened. Cached answers are keyed by source record and prompt hash, but they are not yet fully tied to all conditions under which they were generated—such as the model used, prompt version, retrieval settings, embedding model, source record ID, or cited chunks. Without this context, a cached response may appear valid even after underlying configurations have changed, leading to stale or misleading results.
 
 A more reliable approach would link each cached answer to a clear fingerprint of its retrieval context, along with any associated calculation trace. The system should only reuse cached outputs that still match these conditions and have passed validation. This would help ensure that cached responses remain accurate, consistent, and trustworthy over time.
 
