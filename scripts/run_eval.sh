@@ -3,6 +3,7 @@ set -euo pipefail
 
 : "${MODEL_CONFIG_PATH:=configs/model_config.toml}"
 : "${RAW_DATA_PATH:=data/evaluation/convfinqa_train_subset.json}"
+: "${INGESTION_FILE_PATHS:=data/evaluation/convfinqa_train_subset.json,data/evaluation/convfinqa_context_window_mock.json}"
 : "${POSTGRES_HOST:=localhost}"
 : "${POSTGRES_PORT:=5432}"
 : "${POSTGRES_DB:=convfinqa}"
@@ -18,6 +19,7 @@ set -euo pipefail
 
 export MODEL_CONFIG_PATH
 export RAW_DATA_PATH
+export INGESTION_FILE_PATHS
 export POSTGRES_HOST
 export POSTGRES_PORT
 export POSTGRES_DB

@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     model_config_path: Path = Field(validation_alias="MODEL_CONFIG_PATH")
 
     raw_data_path: Path = Field(validation_alias="RAW_DATA_PATH")
+    ingestion_file_paths: list[Path] | None = Field(
+        default=None,
+        validation_alias="INGESTION_FILE_PATHS",
+    )
 
     postgres_host: str = Field(validation_alias="POSTGRES_HOST")
     postgres_port: int = Field(validation_alias="POSTGRES_PORT")
@@ -44,6 +48,20 @@ class Settings(BaseSettings):
             raise ValueError(f"Model config path does not exist: {v}")
         return v
 
+    @field_validator("ingestion_file_paths", mode="before")
+    @classmethod
+    def parse_ingestion_file_paths(
+        cls, v: str | list[str] | list[Path] | None
+    ) -> list[Path] | list[str] | None:
+        if v is None or isinstance(v, list):
+            return v
+        return [Path(path.strip()) for path in v.split(",") if path.strip()]
+
+    @property
+    def ingestion_paths(self) -> list[Path]:
+        """Return configured ingestion files, falling back to RAW_DATA_PATH."""
+        return self.ingestion_file_paths or [self.raw_data_path]
+
     @property
     def database_url(self) -> str:
         """Return the SQLAlchemy-compatible Postgres connection URL."""
@@ -61,5 +79,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """Return cached application settings."""
-    settings_type = cast(type[Settings], Settings)
-    return settings_type()
+    return Settings() # type: ignore

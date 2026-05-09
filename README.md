@@ -62,6 +62,7 @@ Runtime settings come from environment variables or `.env`:
 
 - `MODEL_CONFIG_PATH`
 - `RAW_DATA_PATH`
+- `INGESTION_FILE_PATHS`, optional comma-separated list of ConvFinQA-shaped files to ingest
 - `POSTGRES_HOST`
 - `POSTGRES_PORT`
 - `POSTGRES_DB`

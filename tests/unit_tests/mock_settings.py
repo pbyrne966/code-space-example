@@ -26,6 +26,7 @@ class MockSettings:
         self.raw_data_path = Path(
             raw_data_path or self.repo_root / "data" / "convfinqa_dataset.json"
         )
+        self.ingestion_file_paths = [self.raw_data_path]
         self.postgres_host = postgres_host
         self.postgres_port = postgres_port
         self.postgres_db = postgres_db
@@ -45,3 +46,8 @@ class MockSettings:
             f"@{self.postgres_host}:{self.postgres_port}"
             f"/{self.postgres_db}"
         )
+
+    @property
+    def ingestion_paths(self) -> list[Path]:
+        """Return files used by ingestion helpers."""
+        return self.ingestion_file_paths

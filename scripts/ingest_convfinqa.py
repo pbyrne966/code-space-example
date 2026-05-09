@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from src.chunking_service.data_loader import ProcessLayer
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
@@ -29,19 +27,22 @@ def main() -> None:
     if client is None:
         raise ValueError("Could not initialize client")
 
-    ProcessLayer(
-        db_service=db_service,
-        raw_file_src=Path(
-            "/workspaces/tomorro-code-space/data/evaluation/convfinqa_tiny_10.json"
-        ),
-        model_client=client,
-    ).process()
+    total_chunks = 0
+    for raw_file_src in settings.ingestion_paths:
+        chunks = ProcessLayer(
+            db_service=db_service,
+            raw_file_src=raw_file_src,
+            model_client=client,
+        ).process()
+        total_chunks += len(chunks)
+        logger.info("Ingested %s chunks from %s", len(chunks), raw_file_src)
+
     logger.info("Ingestion finished")
 
     if not db_service.has_data():
         raise RuntimeError("Ingestion finished but no chunks were detected")
 
-    logger.info("ingestion complete")
+    logger.info("ingestion complete: %s chunks", total_chunks)
 
 
 if __name__ == "__main__":
