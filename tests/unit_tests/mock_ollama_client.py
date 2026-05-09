@@ -11,7 +11,8 @@ class MockOllamaClient(ModelClient):
         self,
         model_name: str = "mock-qwen",
         chat_output: str = (
-            '{"answer":"mock answer","citations":[],"calculation_program":null}'
+            '{"answer":"mock answer","citations":[],"calculation_program":null,'
+            '"requery":null}'
         ),
     ) -> None:
         self._config = ModelConfig(

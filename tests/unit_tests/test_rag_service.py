@@ -12,7 +12,9 @@ from src.data_types import (
 from src.rag_service import RagAnswer, RAGService
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
-LOOKUP_ANSWER = '{"answer":"100","citations":["chunk-1"],"calculation_program":null}'
+LOOKUP_ANSWER = (
+    '{"answer":"100","citations":["chunk-1"],"calculation_program":null,"requery":null}'
+)
 
 
 class FakeRetriever:
@@ -82,7 +84,10 @@ class RagServiceTest(unittest.TestCase):
     def test_build_prompt_requests_json_only(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
-            chat_output='{"answer":"ok","citations":[],"calculation_program":null}',
+            chat_output=(
+                '{"answer":"ok","citations":[],"calculation_program":null,'
+                '"requery":null}'
+            ),
         )
         service = RAGService(
             model_client=model_client,
@@ -103,10 +108,16 @@ class RagServiceTest(unittest.TestCase):
             ],
         )
 
-        self.assertIn("Output a single JSON object only.", prompt)
+        self.assertIn("Output a single JSON object only", prompt)
         self.assertIn('"calculation_program": null', prompt)
+        self.assertIn('"requery": null', prompt)
         self.assertIn(
-            "Return exactly these keys: answer, citations, calculation_program.",
+            "return exactly these keys: answer, citations, calculation_program, requery.",
+            prompt,
+        )
+        self.assertIn("No requery has been performed for this user question.", prompt)
+        self.assertIn(
+            "`requery` must be null unless a better retrieval pass is required before answering.",
             prompt,
         )
         self.assertIn("answer must be only the value, not a sentence.", prompt)
@@ -165,6 +176,28 @@ class RagServiceTest(unittest.TestCase):
         )
         self.assertIn("Assistant answer: 206588", prompt)
         self.assertIn("Retrieved context:\n[Source 1] current 2008 table row", prompt)
+
+    def test_build_prompt_hides_requery_policy_after_requery(self) -> None:
+        service = RAGService(
+            model_client=MockOllamaClient(model_name="test-model"),
+            retriever=FakeRetriever(),
+        )
+
+        prompt = service.build_prompt(
+            "What about in 2008?",
+            ["[Source 1] current 2008 table row"],
+            is_requery=True,
+        )
+
+        self.assertIn(
+            "A requery has already been performed for this user question.",
+            prompt,
+        )
+        self.assertIn("Return `requery: null`.", prompt)
+        self.assertNotIn(
+            "`requery` must be null unless a better retrieval pass is required before answering.",
+            prompt,
+        )
 
     def test_parse_chat_history_formats_prior_answers_and_context(self) -> None:
         service = RAGService(
@@ -288,7 +321,7 @@ class RagServiceTest(unittest.TestCase):
                 '{"answer":"2","citations":["chunk-1"],'
                 '"calculation_program":{"steps":[{"operation":"divide",'
                 '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
-                '{"kind":"literal","literal":50.0}]}]}}'
+                '{"kind":"literal","literal":50.0}]}]},"requery":null}'
             ),
         )
         service = RAGService(
@@ -299,6 +332,7 @@ class RagServiceTest(unittest.TestCase):
         result = service.answer("How many times larger was revenue?", "record-1")
 
         self.assertEqual(result.answer, "2")
+        self.assertIsNotNone(result.calculation_program)
         self.assertEqual(result.turn_program, "divide(100, 50)")
 
     def test_build_table_value_candidates_assigns_stable_ids(self) -> None:
@@ -326,7 +360,8 @@ class RagServiceTest(unittest.TestCase):
                 '{"answer":"50","citations":["chunk-1"],'
                 '"calculation_program":{"steps":[{"operation":"subtract",'
                 '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
-                '{"kind":"table_value","value_id":"chunk-1:value:1"}]}]}}'
+                '{"kind":"table_value","value_id":"chunk-1:value:1"}]}]},'
+                '"requery":null}'
             ),
         )
         service = RAGService(
@@ -337,6 +372,7 @@ class RagServiceTest(unittest.TestCase):
         result = service.answer("How much did revenue increase?", "record-1")
 
         self.assertEqual(result.answer, "50")
+        self.assertIsNotNone(result.calculation_program)
         self.assertEqual(result.turn_program, "subtract(100, 50)")
 
     def test_answer_formats_computed_percentage_answer(self) -> None:
@@ -352,7 +388,8 @@ class RagServiceTest(unittest.TestCase):
                 '"operands":[{"kind":"step_result","step_index":0},'
                 '{"kind":"table_value","value_id":"chunk-1:value:1"}]},'
                 '{"operation":"percentage",'
-                '"operands":[{"kind":"step_result","step_index":1}]}]}}'
+                '"operands":[{"kind":"step_result","step_index":1}]}]},'
+                '"requery":null}'
             ),
         )
         service = RAGService(
@@ -375,7 +412,7 @@ class RagServiceTest(unittest.TestCase):
                 '{"answer":"3","citations":["chunk-1"],'
                 '"calculation_program":{"steps":[{"operation":"divide",'
                 '"operands":[{"kind":"table_value","value_id":"chunk-1:value:0"},'
-                '{"kind":"literal","literal":50.0}]}]}}'
+                '{"kind":"literal","literal":50.0}]}]},"requery":null}'
             ),
         )
         service = RAGService(
@@ -391,7 +428,7 @@ class RagServiceTest(unittest.TestCase):
     def test_answer_defaults_missing_calculation_program_to_lookup(self) -> None:
         model_client = MockOllamaClient(
             model_name="test-model",
-            chat_output='{"answer":"100","citations":["chunk-1"]}',
+            chat_output='{"answer":"100","citations":["chunk-1"],"requery":null}',
         )
         service = RAGService(
             model_client=model_client,
@@ -410,7 +447,8 @@ class RagServiceTest(unittest.TestCase):
                 '{"answer":"50","citations":["chunk-1"],'
                 '"calculation_program":{"steps":[{"operation":"subtract",'
                 '"operands":[{"kind":"table_value","value_id":"missing"},'
-                '{"kind":"table_value","value_id":"chunk-1:value:1"}]}]}}'
+                '{"kind":"table_value","value_id":"chunk-1:value:1"}]}]},'
+                '"requery":null}'
             ),
         )
         service = RAGService(

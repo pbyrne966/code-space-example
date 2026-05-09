@@ -1,5 +1,6 @@
 import unittest
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
@@ -7,12 +8,32 @@ from sqlalchemy.engine import Engine
 from src.data_types import ChatHistoryPair, ChatMessageRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
-from src.main import record_cached_answer
+from src.main import process_question, record_cached_answer
+from src.rag_service import RagAnswer
+
+
+class FakeAnswerService:
+    def __init__(self, answers: list[RagAnswer]) -> None:
+        self.answers = answers
+        self.calls: list[tuple[str, str, list[ChatHistoryPair], bool]] = []
+
+    def answer(
+        self,
+        message: str,
+        record_id: str,
+        session_history: list[ChatHistoryPair] | None = None,
+        is_requery: bool = False,
+    ) -> RagAnswer:
+        self.calls.append((message, record_id, session_history or [], is_requery))
+        return self.answers.pop(0)
 
 
 def rag_answer_json(answer: str, citations: list[str] | None = None) -> str:
     citation_text = ",".join(f'"{citation}"' for citation in citations or [])
-    return f'{{"answer":"{answer}","citations":[{citation_text}],"turn_program":null}}'
+    return (
+        f'{{"answer":"{answer}","citations":[{citation_text}],'
+        f'"calculation_program":null,"turn_program":null,"requery":null}}'
+    )
 
 
 class PostgresChatServiceTest(unittest.TestCase):
@@ -150,6 +171,73 @@ class PostgresChatServiceTest(unittest.TestCase):
             replayed_cached.content,
             rag_answer_json("The cached answer is replayed."),
         )
+
+    def test_process_question_cache_hit_records_one_new_history_pair(self) -> None:
+        self._record_turn(
+            prompt="What changed?",
+            answer=rag_answer_json("The cached answer is replayed."),
+        )
+        answer_service = FakeAnswerService([])
+
+        response = process_question(
+            "What changed?",
+            "record-1",
+            self.chat_session,
+            SimpleNamespace(caching=True),
+            self.chat_service,
+            answer_service,
+        )
+
+        self.assertIsNotNone(response)
+        self.assertEqual(response.answer, "The cached answer is replayed.")
+        self.assertEqual(answer_service.calls, [])
+        updated_session = self.chat_service.get_session("record-1")
+        self.assertIsNotNone(updated_session)
+        self.assertEqual(updated_session.message_count, 4)
+        history = self.chat_service.show_history(self.chat_session.session_id, limit=4)
+        self.assertEqual(len(history), 2)
+
+    def test_process_question_requery_records_only_final_history_pair(self) -> None:
+        answer_service = FakeAnswerService(
+            [
+                RagAnswer(
+                    answer="I don't know",
+                    citations=[],
+                    requery="net income 2008",
+                ),
+                RagAnswer(answer="123", citations=["chunk-1"]),
+            ]
+        )
+
+        response = process_question(
+            "what 2008",
+            "record-1",
+            self.chat_session,
+            SimpleNamespace(caching=False),
+            self.chat_service,
+            answer_service,
+        )
+
+        self.assertIsNotNone(response)
+        self.assertEqual(response.answer, "123")
+        self.assertEqual(response.requery, "net income 2008")
+        self.assertEqual(
+            [call[0] for call in answer_service.calls],
+            ["what 2008", "net income 2008"],
+        )
+        self.assertEqual(
+            [call[3] for call in answer_service.calls],
+            [False, True],
+        )
+        updated_session = self.chat_service.get_session("record-1")
+        self.assertIsNotNone(updated_session)
+        self.assertEqual(updated_session.message_count, 2)
+        history = self.chat_service.show_history(self.chat_session.session_id, limit=2)
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0].user_question.content, "what 2008")
+        stored_answer = RagAnswer.model_validate_json(history[0].assistant.content)
+        self.assertEqual(stored_answer.answer, "123")
+        self.assertEqual(stored_answer.requery, "net income 2008")
 
     def test_get_cached_returns_none_for_unanswered_prompt(self) -> None:
         self.chat_service.record_user_message(

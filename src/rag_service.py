@@ -7,7 +7,7 @@ from src.aggregator_service.query_intent import (
     CalculationProgram,
     TableValueCandidate,
 )
-from src.chunking_service.period_extraction import PeriodData, extract_period_data
+from src.chunking_service.period_extraction import extract_period_data
 from src.data_types import ChatHistoryPair, RetrievalChunk, RetrievedChunkRecord
 from src.db_service.postgres_controllers import PostgresChunkStore
 from src.logger import get_logger
@@ -36,6 +36,7 @@ class RagAnswer(BaseModel):
     turn_program: str | None = None
     context_blocks: list[str] = Field(default_factory=list)
     tokens_used: int = Field(default=0)
+    requery: str | None = None
 
 
 class RAGService:
@@ -50,10 +51,36 @@ class RAGService:
         """Format previous turns and their evidence for prompt conditioning."""
         if not chat_history:
             return None
+
         parsed_history = []
         for turn_index, history in enumerate(reversed(chat_history), start=1):
-            user_quistion = history.user_question
-            parsed_history.append(f"User Qustion at Turn {turn_index + 1}: {user_quistion}")
+            try:
+                assistant_content = RagAnswer.model_validate_json(
+                    history.assistant.content
+                )
+            except ValidationError:
+                logger.warning(
+                    "Skipping unparsable assistant history for session_id=%s "
+                    "message_id=%s",
+                    history.assistant.session_id,
+                    history.assistant.message_id,
+                )
+                continue
+
+            context_text = "\n\n".join(assistant_content.context_blocks)
+            parsed_history.append(
+                f"""
+[Prior turn {turn_index}]
+User question: {history.user_question.content}
+Assistant answer: {assistant_content.answer}
+Assistant citations: {json.dumps(assistant_content.citations)}
+Prior retrieved context:
+{context_text}
+""".strip()
+            )
+
+        if not parsed_history:
+            return None
         return "\n\n---\n\n".join(parsed_history)
 
     def build_context_block(
@@ -96,12 +123,37 @@ table_values: {json.dumps(table_values)}
 
         return candidates
 
+    def build_requery_prompt(self, is_requery: bool) -> str:
+        if not is_requery:
+            return """
+ReQuery State:
+No requery has been performed for this user question.
+
+Requery policy:
+- `requery` must be null unless a better retrieval pass is required before answering.
+- Use `requery` only when the retrieved context is insufficient to answer, but conversation history clearly supplies missing search context.
+- Do not use `requery` when the retrieved context already contains the answer.
+- The `requery` string must be short, standalone, and optimized for an embedding retrieval query.
+- The `requery` string must preserve explicit constraints from the current user question, especially dates, years, periods, metrics, entities, and comparison targets.
+- Do not copy conflicting dates, years, periods, metrics, or entities from conversation history.
+- Do not use `requery` to broaden the search, explore alternatives, or change the user's intent.
+- Do not set `requery` to a restatement of the current question; add only the missing search context needed for retrieval.
+"""
+
+        return """
+Requery state:
+A requery has already been performed for this user question.
+Return `requery: null`.
+Answer from the retrieved context, or return "I don't know".
+"""
+
     def build_prompt(
         self,
         question: str,
         context: list[str],
         table_value_candidates: list[TableValueCandidate] | None = None,
         session_history: str | None = None,
+        is_requery: bool = False,
     ) -> str:
         context_string = "\n\n---\n\n".join(context)
         session_history_string = session_history or "No prior turns."
@@ -116,11 +168,13 @@ table_values: {json.dumps(table_values)}
 You answer financial table questions using only the retrieved context.
 
 Rules:
-- Output a single JSON object only and Return exactly these keys: answer, citations, calculation_program.
+- Output a single JSON object only and return exactly these keys: answer, citations, calculation_program, requery.
 - citations must contain the chunk_id that supports the answer.
-- If the answer is not in the context, set answer to "I don't know" and do not invent numbers.
+- If the answer is not in the context, set answer to "I don't know".
 - Use prior turns only to resolve conversational follow-ups such as "what about in 2008?".
 - Prefer the current retrieved context when it directly supports the answer.
+- Do not invent numbers.
+- answer must be only the value, not a sentence.
 - answer must be a scalar answer only: a number, percentage, or short text value.
 - Do not include units, explanatory prose, equations, markdown, or a full sentence in answer.
 - citations must be a JSON array of chunk_id values used to support the answer.
@@ -129,6 +183,9 @@ Rules:
 - For table values, set operand kind to "table_value" and value_id to one exact value_id from available_table_values.
 - For prior step outputs, set operand kind to "step_result" and step_index to the zero-based prior step index.
 - For percent answers, include a final percentage step that converts the ratio to percent scale.
+
+{self.build_requery_prompt(is_requery)}
+
 
 Calculation program schema:
 {calculation_program_schema}
@@ -145,17 +202,18 @@ Conversation history:
 Retrieved context:
 {context_string}
 
-No-calculation response example:
+Lookup response example:
 {{
   "answer": "100",
   "citations": ["chunk_id_1"],
-  "calculation_program": null
+  "calculation_program": null,
+  "requery": null
 }}
 
 
 Calculation response example:
 {{
-  "answer": "14.1",
+  "answer": "14.1%",
   "citations": ["chunk_id_1"],
   "calculation_program": {{
     "steps": [
@@ -180,7 +238,8 @@ Calculation response example:
         ]
       }}
     ]
-  }}
+  }},
+  "requery": null
 }}
 
 """.strip()
@@ -201,7 +260,6 @@ Calculation response example:
         model_answer: RagAnswer,
         table_value_candidates: list[TableValueCandidate],
         context_blocks: list[str],
-        question: str,
     ) -> RagAnswer:
         final_answer = model_answer.answer
         turn_programs = None
@@ -242,6 +300,7 @@ Calculation response example:
         question: str,
         record_id: str,
         session_history: list[ChatHistoryPair] | None = None,
+        is_requery: bool = False,
     ) -> RagAnswer:
         period_data = extract_period_data([question])
         results = self.retriever.retrieve(question, record_id, period_data)
@@ -259,6 +318,7 @@ Calculation response example:
             context_blocks,
             table_value_candidates,
             parsed_session_history,
+            is_requery,
         )
         logger.debug("RAG prompt:\n%s", prompt)
         model_output = self.model_client.query_single(
@@ -267,5 +327,5 @@ Calculation response example:
         )
         model_answer = self._parse_answer(model_output)
         return self.build_final_answer(
-            model_answer, table_value_candidates, context_blocks, question
+            model_answer, table_value_candidates, context_blocks
         )

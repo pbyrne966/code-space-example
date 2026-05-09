@@ -4,12 +4,12 @@ import typer
 from pydantic import ValidationError
 from rich import print as rich_print
 
-from src.data_types import ChatMessageRecord, ChatSessionRecord
+from src.config import Settings
+from src.data_types import ChatHistoryPair, ChatMessageRecord, ChatSessionRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
 from src.rag_service import RagAnswer, RAGService
 from src.runtime import build_context
-from src.config import Settings
 
 logger = get_logger("typer_logger")
 
@@ -75,16 +75,19 @@ def record_cached_answer(
 
 
 def retrieve_fn(
-    chat_service: PostgresChatService,
     message: str,
-    session: ChatSessionRecord,
+    session_history: list[ChatHistoryPair],
     answer_service: RAGService,
     record_id: str,
+    is_requery: bool = False,
 ) -> RagAnswer | None:
-    session_history = chat_service.show_history(session.session_id, limit=10)
-    user_chat_exchange = chat_service.record_user_message(session.session_id, message)
     try:
-        response = answer_service.answer(message, record_id, session_history)
+        response = answer_service.answer(
+            message,
+            record_id,
+            session_history=session_history,
+            is_requery=is_requery,
+        )
     except ValidationError:
         logger.exception("Model answer failed validation for record_id=%s", record_id)
         rich_print(
@@ -99,9 +102,6 @@ def retrieve_fn(
         )
         return None
 
-    chat_service.record_assistant_message(
-        session.session_id, response.model_dump_json(), user_chat_exchange
-    )
     return response
 
 
@@ -113,7 +113,6 @@ def process_question(
     chat_service: PostgresChatService,
     answer_service: RAGService,
 ):
-    response = None
     if settings.caching and (cached := chat_service.get_cached(message, record_id)):
         response = record_cached_answer(
             chat_service,
@@ -122,12 +121,30 @@ def process_question(
             cached,
             record_id,
         )
+        if response is not None:
+            return response
 
-    if response is None:
+    user_chat_exchange = chat_service.record_user_message(session.session_id, message)
+    session_history = chat_service.show_history(session.session_id, limit=10)
+
+    response = retrieve_fn(message, session_history, answer_service, record_id)
+
+    if response is not None and response.requery is not None:
+        requery = response.requery
         response = retrieve_fn(
-            chat_service, message, session, answer_service, record_id
+            requery,
+            session_history,
+            answer_service,
+            record_id,
+            is_requery=True,
         )
 
+    if response is None:
+        return None
+
+    chat_service.record_assistant_message(
+        session.session_id, response.model_dump_json(), user_chat_exchange
+    )
     return response
 
 
@@ -159,12 +176,13 @@ def chat(
         )
 
         if response is None:
-            continue
-        rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
-        if response.turn_program:
-            rich_print(f"[dim]turn program: {response.turn_program}[/dim]")
-        if response.citations:
-            rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
+            rich_print("[red]Chat Error could not process response.[/red]")
+        else:
+            rich_print(f"[blue][bold]assistant:[/bold] {response.answer}[/blue]")
+            if response.turn_program:
+                rich_print(f"[dim]turn program: {response.turn_program}[/dim]")
+            if response.citations:
+                rich_print(f"[dim]citations: {', '.join(response.citations)}[/dim]")
 
 
 if __name__ == "__main__":

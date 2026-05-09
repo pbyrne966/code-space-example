@@ -55,6 +55,14 @@ class QuestionComplexity(BaseModel):
     expected_citation_ids: list[str]
 
 
+# TODO: Imeplement this brother
+# Prescion & Recall -> The Rock Curve and F1 Score
+# Stress Testing & Load Balancer Chain of thought tasks
+# Chain prompts on year and stress test the context window
+# Test For Misleading context -> when did this author write book
+# Test for open ended quistions and trick quistions
+
+
 class EvaluationSummary(BaseModel):
     """Aggregate metrics for an evaluation run."""
 
