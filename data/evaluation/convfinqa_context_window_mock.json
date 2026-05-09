@@ -1,0 +1,161 @@
+{
+  "train": [
+    {
+      "id": "Mock_JKHY/2019/page_28.pdf-3",
+      "doc": {
+        "pre_text": "This mock record follows the JKHY 2009 page 28 cash-flow pattern. The table summarizes net cash from operating activities and related operating cash-flow components for ten fiscal years ended June 30.",
+        "post_text": "Across the ten-year mock period, net cash from operating activities generally increased as net income and non-cash expenses rose. The figures are synthetic and intended for context-window evaluation only.",
+        "table": {
+          "Year ended June 30, 2019": {
+            "net income": 145000.0,
+            "non-cash expenses": 92000.0,
+            "change in receivables": 18000.0,
+            "change in deferred revenue": 26000.0,
+            "change in other assets and liabilities": -9000.0,
+            "net cash from operating activities": 272000.0
+          },
+          "2018": {
+            "net income": 140000.0,
+            "non-cash expenses": 90000.0,
+            "change in receivables": 16500.0,
+            "change in deferred revenue": 25000.0,
+            "change in other assets and liabilities": -8500.0,
+            "net cash from operating activities": 263000.0
+          },
+          "2017": {
+            "net income": 136000.0,
+            "non-cash expenses": 87500.0,
+            "change in receivables": 15000.0,
+            "change in deferred revenue": 24000.0,
+            "change in other assets and liabilities": -8000.0,
+            "net cash from operating activities": 254500.0
+          },
+          "2016": {
+            "net income": 132000.0,
+            "non-cash expenses": 85000.0,
+            "change in receivables": 13500.0,
+            "change in deferred revenue": 23000.0,
+            "change in other assets and liabilities": -7600.0,
+            "net cash from operating activities": 245900.0
+          },
+          "2015": {
+            "net income": 128000.0,
+            "non-cash expenses": 82500.0,
+            "change in receivables": 12000.0,
+            "change in deferred revenue": 22000.0,
+            "change in other assets and liabilities": -7200.0,
+            "net cash from operating activities": 237300.0
+          },
+          "2014": {
+            "net income": 124000.0,
+            "non-cash expenses": 80000.0,
+            "change in receivables": 10500.0,
+            "change in deferred revenue": 21000.0,
+            "change in other assets and liabilities": -6900.0,
+            "net cash from operating activities": 228600.0
+          },
+          "2013": {
+            "net income": 120000.0,
+            "non-cash expenses": 77500.0,
+            "change in receivables": 9000.0,
+            "change in deferred revenue": 20000.0,
+            "change in other assets and liabilities": -6500.0,
+            "net cash from operating activities": 220000.0
+          },
+          "2012": {
+            "net income": 116000.0,
+            "non-cash expenses": 75000.0,
+            "change in receivables": 7500.0,
+            "change in deferred revenue": 19000.0,
+            "change in other assets and liabilities": -6100.0,
+            "net cash from operating activities": 211400.0
+          },
+          "2011": {
+            "net income": 112000.0,
+            "non-cash expenses": 72500.0,
+            "change in receivables": 6000.0,
+            "change in deferred revenue": 18000.0,
+            "change in other assets and liabilities": -5800.0,
+            "net cash from operating activities": 202700.0
+          },
+          "2010": {
+            "net income": 108000.0,
+            "non-cash expenses": 70000.0,
+            "change in receivables": 4500.0,
+            "change in deferred revenue": 17000.0,
+            "change in other assets and liabilities": -5400.0,
+            "net cash from operating activities": 194100.0
+          }
+        }
+      },
+      "dialogue": {
+        "conv_questions": [
+          "what is the net cash from operating activities in 2019?",
+          "what about in 2018?",
+          "what about in 2017?",
+          "what about in 2016?",
+          "what about in 2015?",
+          "what about in 2014?",
+          "what about in 2013?",
+          "what about in 2012?",
+          "what about in 2011?",
+          "what about in 2010?"
+        ],
+        "conv_answers": [
+          "272000",
+          "263000",
+          "254500",
+          "245900",
+          "237300",
+          "228600",
+          "220000",
+          "211400",
+          "202700",
+          "194100"
+        ],
+        "turn_program": [
+          "272000",
+          "263000",
+          "254500",
+          "245900",
+          "237300",
+          "228600",
+          "220000",
+          "211400",
+          "202700",
+          "194100"
+        ],
+        "executed_answers": [
+          272000.0,
+          263000.0,
+          254500.0,
+          245900.0,
+          237300.0,
+          228600.0,
+          220000.0,
+          211400.0,
+          202700.0,
+          194100.0
+        ],
+        "qa_split": [
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false,
+          false
+        ]
+      },
+      "features": {
+        "num_dialogue_turns": 10,
+        "has_type2_question": false,
+        "has_duplicate_columns": false,
+        "has_non_numeric_values": false
+      }
+    }
+  ]
+}
