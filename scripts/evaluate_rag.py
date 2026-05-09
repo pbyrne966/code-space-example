@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from collections import OrderedDict, defaultdict
 from collections.abc import Callable
 from pathlib import Path
@@ -11,16 +12,16 @@ from typing import Annotated, Any, cast
 import typer
 from pydantic import BaseModel, Field
 
+from scripts.evaluate_rag_metrics import display_metrics_json
 from src.chunking_service.chunking import chunk_record
-from src.data_types import ChatSessionRecord, ConvFinQARecord, SplitName
-from src.db_service.postgres_controllers import PostgresChatService
+from src.data_types import ConvFinQARecord, RetrievalChunk, SplitName
 from src.logger import get_logger
-from src.main import process_question
 from src.rag_service import RagAnswer
 from src.runtime import build_context
-import re
 
 logger = get_logger("rag_evaluation")
+RetrievalFn = Callable[[str, str], RagAnswer | None]
+NUMERIC_REFERENCE_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?%?")
 
 
 class EvaluationExample(BaseModel):
@@ -79,11 +80,14 @@ def _normalize_expected_fallback(answer: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]", "", answer.lower())
 
 
+def _normalize_text_answer(answer: str | float | int) -> str:
+    return re.sub(r"\s+", " ", str(answer).strip().lower())
+
+
 def context_window_performace(
     context_window_data_path: Path,
     split: str,
-    chat_service: PostgresChatService,
-    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
+    retrieval_fn: RetrievalFn,
 ) -> dict[str, ContextWindowPerformanceResult]:
     context_window_records = load_records(context_window_data_path, split)
     quistions = build_examples(
@@ -92,9 +96,9 @@ def context_window_performace(
         context_window_data_path,
     )
     context_window_performance: dict[str, ContextWindowPerformanceResult] = {}
-    for step_idx, quistion in enumerate(quistions):
-        evaluated = evaluate_one(retrieval_fn, chat_service, quistion)
-        step_id = f"{step_idx}:{evaluated.predicted_answer.answer if evaluated.predicted_answer is not None else 'null'}"
+    for quistion in quistions:
+        evaluated = evaluate_one(retrieval_fn, quistion)
+        step_id = f"{quistion.record_id}:{quistion.question_index}"
         context_window_performance[step_id] = ContextWindowPerformanceResult(
             tokens_used=evaluated.tokens_used,
             quistion_correct=evaluated.answer_correct,
@@ -106,17 +110,15 @@ def context_window_performace(
 
 def unrelated_quistions(
     record_id: str,
-    chat_service: PostgresChatService,
     unrelated_questions_path: Path,
-    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
+    retrieval_fn: RetrievalFn,
     compare_to: str = "I dont know",
 ) -> list[UnrelatedQuistionResult]:
     unrelated_quistons = Qustions(**json.loads(unrelated_questions_path.read_text()))
     unrelated_qustions_output: list[UnrelatedQuistionResult] = []
-    chat_session = chat_service.get_or_create_session(record_id=record_id)
 
     for question in unrelated_quistons.quistions:
-        predicted: RagAnswer | None = retrieval_fn(question, record_id, chat_session)
+        predicted: RagAnswer | None = retrieval_fn(question, record_id)
         is_expected = predicted is None
         if predicted is not None:
             is_expected = _normalize_expected_fallback(
@@ -176,8 +178,55 @@ def build_citation_ids(
     return [chunk.chunk_id for chunk in chunks]
 
 
+def _numeric_references(*values: str | float | int | None) -> set[float]:
+    references: set[float] = set()
+    for value in values:
+        if value is None:
+            continue
+        for match in NUMERIC_REFERENCE_RE.findall(str(value)):
+            references.add(float(match.replace(",", "").rstrip("%")))
+    return references
+
+
+def _chunk_contains_numeric_reference(
+    chunk: RetrievalChunk,
+    numeric_references: set[float],
+) -> bool:
+    return any(
+        table_value.numeric_value in numeric_references
+        for table_value in chunk.table_values
+        if table_value.numeric_value is not None
+    )
+
+
+def build_supporting_citation_ids(
+    record: ConvFinQARecord,
+    split: SplitName,
+    record_index: int,
+    source_file: Path,
+    gold_answer: str | float | int,
+    gold_program: str | None,
+) -> list[str]:
+    """Build citation chunk IDs that contain values used by this specific turn."""
+    chunks = chunk_record(
+        record=record,
+        split=split,
+        record_index=record_index,
+        source_file=source_file,
+    )
+    numeric_references = _numeric_references(gold_program, gold_answer)
+    if not numeric_references:
+        return []
+
+    return [
+        chunk.chunk_id
+        for chunk in chunks
+        if _chunk_contains_numeric_reference(chunk, numeric_references)
+    ]
+
+
 def _parse_answer_number(answer: str | float | int) -> float:
-    return float(str(answer).strip().rstrip("%"))
+    return float(str(answer).strip().replace(",", "").rstrip("%"))
 
 
 def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
@@ -194,10 +243,12 @@ def load_records(dataset_path: Path, split: str) -> list[ConvFinQARecord]:
 
 
 def pull_random_record_ids(
-    records: list[ConvFinQARecord], sample_size: int = 10
+    records: list[ConvFinQARecord], sample_size: int = 10, seed: int | None = 42
 ) -> list[ConvFinQARecord]:
     """Return a random sample of source records for evaluation."""
-    random_sample = random.sample([d for d in records], k=sample_size)
+    sample_size = min(sample_size, len(records))
+    rng = random.Random(seed)
+    random_sample = rng.sample(records, k=sample_size)
     return random_sample
 
 
@@ -223,11 +274,13 @@ def build_examples(
                 gold_answer=record.dialogue.conv_answers[turn_index],
                 gold_program=gold_program,
                 split=split,
-                expected_citation_ids=build_citation_ids(
+                expected_citation_ids=build_supporting_citation_ids(
                     record=record,
                     split=split,
                     record_index=idx,
                     source_file=source_file,
+                    gold_answer=record.dialogue.conv_answers[turn_index],
+                    gold_program=gold_program,
                 ),
                 question_index=f"record_idx:{idx}:question_idx:{turn_index}",
             )
@@ -242,17 +295,21 @@ def evaluate_answer(
     numeric_tolerance: float,
 ) -> bool:
     """Return whether the predicted answer matches the gold answer."""
-    matched = str(_parse_answer_number(predicted.answer)) == str(
-        _parse_answer_number(example.gold_answer)
-    )
+    try:
+        predicted_number = _parse_answer_number(predicted.answer)
+        gold_number = _parse_answer_number(example.gold_answer)
+    except ValueError:
+        return _normalize_text_answer(predicted.answer) == _normalize_text_answer(
+            example.gold_answer
+        )
+
+    matched = str(predicted_number) == str(gold_number)
     if matched:
         return matched
     elif numeric_tolerance == 0.0:
         return False
 
-    float_answer = _parse_answer_number(predicted.answer)
-    gold_answer = _parse_answer_number(example.gold_answer)
-    return abs(float_answer - gold_answer) <= numeric_tolerance
+    return abs(predicted_number - gold_number) <= numeric_tolerance
 
 
 def evaluate_citations(
@@ -267,18 +324,14 @@ def evaluate_citations(
 
 
 def evaluate_one(
-    retrieval_fn: Callable[[str, str, ChatSessionRecord], RagAnswer | None],
-    chat_service: PostgresChatService,
+    retrieval_fn: RetrievalFn,
     example: EvaluationExample,
     numeric_tolerance: float = 0.0,
 ) -> ExampleResult:
     """Run the complete RAG evaluation path for one example."""
     start = perf_counter()
     try:
-        chat_session = chat_service.get_or_create_session(record_id=example.record_id)
-        predicted: RagAnswer | None = retrieval_fn(
-            example.question, example.record_id, chat_session
-        )
+        predicted: RagAnswer | None = retrieval_fn(example.question, example.record_id)
         latency_seconds = perf_counter() - start
 
         if predicted is None:
@@ -323,7 +376,11 @@ def summarize_results(
         for latency in results
         if latency.latency_seconds is not None
     ]
-    average_latency = sum(average_latency_array) // (len(average_latency_array) or 1)
+    average_latency = (
+        sum(average_latency_array) / len(average_latency_array)
+        if average_latency_array
+        else None
+    )
     amount_of_tokens_per_question = defaultdict(list)
     prompts_above_latency = []
 
@@ -352,7 +409,7 @@ def summarize_results(
             failed_examples += 1
             problematic_record_id[result.example.record_id] = None
 
-        if (result.latency_seconds or 0.0) > average_latency:
+        if average_latency is not None and (result.latency_seconds or 0.0) > average_latency:
             prompts_above_latency.append(
                 f"{result.example.record_id}:{result.example.question_index}"
             )
@@ -361,8 +418,8 @@ def summarize_results(
     citation_validity = valid_citations / len(results) if results else None
 
     evaluation_summary = EvaluationSummary(
-        total_examples=len(records),
-        answered_examples=len(results),
+        total_examples=len(results),
+        answered_examples=sum(1 for result in results if result.error is None),
         failed_examples=failed_examples,
         problematic_record_ids=[*problematic_record_id.keys()],
         question_complexity=cast(
@@ -378,12 +435,21 @@ def summarize_results(
     return evaluation_summary
 
 
+def default_metrics_output_path(output: Path) -> Path:
+    """Return the default display-metrics path for an evaluation report path."""
+    return output.with_name(f"{output.stem}_metrics{output.suffix}")
+
+
 def main(
     split: Annotated[str, typer.Option(help="Dataset split to evaluate.")] = "dev",
     limit: Annotated[
         int | None,
-        typer.Option(help="Maximum number of examples to evaluate."),
+        typer.Option(help="Maximum number of source records to sample."),
     ] = None,
+    seed: Annotated[
+        int | None,
+        typer.Option(help="Random seed for source-record sampling."),
+    ] = 42,
     numeric_tolerance: Annotated[
         float,
         typer.Option(help="Absolute tolerance for numeric answer matching."),
@@ -392,6 +458,10 @@ def main(
         Path,
         typer.Option(help="Path for the JSON evaluation report."),
     ] = Path("evaluation_results.json"),
+    metrics_output: Annotated[
+        Path | None,
+        typer.Option(help="Path for the display metrics JSON report."),
+    ] = None,
     context_window_data_path: Path | None = None,
     unrelated_questions_path: Path | None = None,
 ) -> None:
@@ -399,29 +469,34 @@ def main(
     context = build_context()
     settings = context.settings
     records = load_records(settings.raw_data_path, split)  # type: ignore
-    example_records = pull_random_record_ids(records, limit or 10)
+    example_records = pull_random_record_ids(records, limit or 10, seed)
     examples = build_examples(
         example_records,
         cast(SplitName, split),
         settings.raw_data_path,
     )
 
-    def retrieve_partial(
-        message: str, record_id: str, session: ChatSessionRecord
-    ) -> RagAnswer | None:
-        return process_question(
+    def retrieve_partial(message: str, record_id: str) -> RagAnswer | None:
+        response = context.answer_service.answer(
             message,
             record_id,
-            session=session,
-            settings=settings,
-            chat_service=context.chat_service,
-            answer_service=context.answer_service,
+            session_history=[],
         )
+        if response.requery is None:
+            return response
+
+        requery = response.requery
+        response = context.answer_service.answer(
+            requery,
+            record_id,
+            session_history=[],
+            is_requery=True,
+        )
+        return response.model_copy(update={"requery": requery})
 
     results = [
         evaluate_one(
             retrieval_fn=retrieve_partial,
-            chat_service=context.chat_service,
             example=example,
             numeric_tolerance=numeric_tolerance,
         )
@@ -434,7 +509,6 @@ def main(
         context_window_output = context_window_performace(
             context_window_data_path=context_window_data_path,
             split=split,
-            chat_service=context.chat_service,
             retrieval_fn=retrieve_partial,
         )
 
@@ -442,7 +516,6 @@ def main(
     if unrelated_questions_path is not None:
         unrelated_output = unrelated_quistions(
             record_id=example_records[0].id,
-            chat_service=context.chat_service,
             unrelated_questions_path=unrelated_questions_path,
             retrieval_fn=retrieve_partial,
         )
@@ -455,6 +528,8 @@ def main(
     )
 
     output.write_text(report.model_dump_json(indent=4), encoding="utf-8")
+    metrics_output = metrics_output or default_metrics_output_path(output)
+    metrics_output.write_text(display_metrics_json(report), encoding="utf-8")
 
 
 if __name__ == "__main__":
