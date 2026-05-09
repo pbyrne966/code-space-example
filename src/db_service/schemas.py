@@ -407,9 +407,7 @@ class AnswerCache(Base):
         Index("ix_answer_cache_hashed_content", "hashed_content"),
     )
 
-    cache_id: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
+    cache_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     record_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
     prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     prompt: Mapped[str] = mapped_column(Text, nullable=False)

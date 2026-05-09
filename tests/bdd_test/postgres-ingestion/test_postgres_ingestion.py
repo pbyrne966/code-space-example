@@ -1,10 +1,12 @@
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from pytest_bdd import given, scenario, then, when
+from sqlalchemy import select
 from sqlalchemy.engine import Engine
 
 from scripts import setup_db
@@ -17,14 +19,40 @@ from src.data_types import (
     RetrievedChunkRecord,
 )
 from src.db_service.postgres_controllers import PostgresChatService, PostgresChunkStore
-from src.db_service.schemas import MAX_EMBEDDING_DIMENSION, SourceRecordTable
+from src.db_service.schemas import (
+    MAX_EMBEDDING_DIMENSION,
+    AnswerCache,
+    ChatExchange,
+    SourceRecordTable,
+)
+from src.main import process_question
 from src.model_service.models import ModelConfig
+from src.rag_service import RagAnswer
 from src.runtime import build_chat_service, build_db_engine, build_retriever
 from tests.unit_tests.mock_ollama_client import MockOllamaClient
 
 BDD_ENV_PATH = Path("tests/bdd_test/postgres_behaviour.env")
 BDD_MODEL_CONFIG_PATH = Path("configs/model_config.bdd.toml")
 BDD_SAMPLE_DATA_PATH = Path("data/samples/convfinqa_dev_sample.json")
+CACHE_QUESTION_PREFIX = "What was the cacheable sample fact?"
+CACHE_ANSWER = RagAnswer(answer="The cached sample answer.", citations=[])
+
+
+class FakeAnswerService:
+    """Deterministic answer service for cache-flow BDD coverage."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, bool]] = []
+
+    def answer(
+        self,
+        message: str,
+        record_id: str,
+        session_history: list[ChatHistoryPair] | None = None,
+        is_requery: bool = False,
+    ) -> RagAnswer:
+        self.calls.append((message, record_id, is_requery))
+        return CACHE_ANSWER
 
 
 def _load_env_file(path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,6 +94,14 @@ def test_process_layer_ingests_sample_file_into_postgres() -> None:
 )
 def test_chat_session_records_messages_after_sample_ingestion() -> None:
     """Run the Postgres chat session behaviour scenario."""
+
+
+@scenario(
+    "postgres_ingestion.feature",
+    "Cached answer is replayed as a fresh chat exchange",
+)
+def test_cached_answer_is_replayed_as_fresh_chat_exchange() -> None:
+    """Run the Postgres cache replay behaviour scenario."""
 
 
 @scenario(
@@ -247,9 +283,10 @@ def chat_context(ingestion_result: dict[str, object]) -> dict[str, object]:
     assert isinstance(record_id, str)
 
     chat_service = build_chat_service(cast(Engine, db_engine))
-    chat_session = chat_service.start_or_resume_session(record_id)
+    chat_session = chat_service.create_session(record_id)
 
     return {
+        "db_engine": db_engine,
         "chat_service": chat_service,
         "chat_session": chat_session,
         "record_id": record_id,
@@ -274,6 +311,46 @@ def append_chat_messages(chat_context: dict[str, object]) -> None:
         '{"answer":"The sample was ingested.","citations":[]}',
         user_message,
     )
+
+
+@when("I ask the same cacheable question twice", target_fixture="cache_context")
+def cache_context(chat_context: dict[str, object]) -> dict[str, object]:
+    """Ask a question twice with caching enabled through process_question."""
+    chat_service = chat_context["chat_service"]
+    chat_session = chat_context["chat_session"]
+    record_id = chat_context["record_id"]
+    answer_service = FakeAnswerService()
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+    assert isinstance(record_id, str)
+
+    cache_question = f"{CACHE_QUESTION_PREFIX} {chat_session.session_id}"
+    settings = SimpleNamespace(caching=True)
+    first_response = process_question(
+        cache_question,
+        record_id,
+        chat_session,
+        settings,
+        chat_service,
+        answer_service,
+    )
+    second_response = process_question(
+        cache_question,
+        record_id,
+        chat_session,
+        settings,
+        chat_service,
+        answer_service,
+    )
+
+    return {
+        **chat_context,
+        "answer_service": answer_service,
+        "cache_question": cache_question,
+        "first_response": first_response,
+        "second_response": second_response,
+    }
 
 
 @then("chunks should be persisted for the sample record")
@@ -423,3 +500,78 @@ def chat_history_should_contain_pair(chat_context: dict[str, object]) -> None:
     assert history[0].assistant.content == (
         '{"answer":"The sample was ingested.","citations":[]}'
     )
+
+
+@then("the second answer should come from the answer cache")
+def second_answer_should_come_from_cache(cache_context: dict[str, object]) -> None:
+    """Assert only the first question reached the answer service."""
+    answer_service = cache_context["answer_service"]
+    cache_question = cache_context["cache_question"]
+    first_response = cache_context["first_response"]
+    second_response = cache_context["second_response"]
+
+    assert isinstance(answer_service, FakeAnswerService)
+    assert isinstance(cache_question, str)
+    assert isinstance(first_response, RagAnswer)
+    assert isinstance(second_response, RagAnswer)
+    assert first_response.answer == CACHE_ANSWER.answer
+    assert second_response.answer == CACHE_ANSWER.answer
+    assert answer_service.calls == [(cache_question, cache_context["record_id"], False)]
+
+
+@then("chat history should contain two cache replay pairs")
+def chat_history_should_contain_two_cache_pairs(
+    cache_context: dict[str, object],
+) -> None:
+    """Assert fresh and cached answers are both represented as chat exchanges."""
+    chat_service = cache_context["chat_service"]
+    chat_session = cache_context["chat_session"]
+    cache_question = cache_context["cache_question"]
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+    assert isinstance(cache_question, str)
+
+    history = chat_service.show_history(chat_session.session_id, limit=4)
+    assert len(history) == 2
+    assert all(pair.user_question.content == cache_question for pair in history)
+    assert all(
+        RagAnswer.model_validate_json(pair.assistant.content).answer
+        == CACHE_ANSWER.answer
+        for pair in history
+    )
+
+
+@then("answer cache should remain separate from chat history")
+def answer_cache_should_remain_separate(cache_context: dict[str, object]) -> None:
+    """Assert cache rows are stored outside the chat message table."""
+    chat_service = cache_context["chat_service"]
+    chat_session = cache_context["chat_session"]
+    cache_question = cache_context["cache_question"]
+
+    assert isinstance(chat_service, PostgresChatService)
+    assert isinstance(chat_session, ChatSessionRecord)
+    assert isinstance(cache_question, str)
+
+    with chat_service.session_factory() as session:
+        cache_rows = (
+            session.execute(
+                select(AnswerCache).where(AnswerCache.prompt == cache_question)
+            )
+            .scalars()
+            .all()
+        )
+        chat_rows = (
+            session.execute(
+                select(ChatExchange).where(
+                    ChatExchange.session_id == chat_session.session_id
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert len(cache_rows) == 1
+    assert len(chat_rows) == 4
+    user_contents = {row.content for row in chat_rows if row.role == "user"}
+    assert cache_rows[0].content not in user_contents

@@ -70,9 +70,7 @@ class ProcessLayer:
                 all_chunks.extend(chunks)
             except Exception as err:
                 error = str(err)
-                logger.error(
-                    "Could not ingest record -> %s error %s", record_id, error
-                )
+                logger.error("Could not ingest record -> %s error %s", record_id, error)
                 continue
 
         if all_chunks:
