@@ -152,6 +152,18 @@ class ChatMessageRecord(BaseModel):
     updated_at: datetime | None = None
 
 
+class CachedAnswerRecord(BaseModel):
+    """Serializable cached answer row."""
+
+    cache_id: int | None = None
+    record_id: str
+    prompt_hash: str
+    content: str
+    hashed_content: str
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
 class ChatHistoryPair(BaseModel):
     """Serializable user/assistant message pair."""
 

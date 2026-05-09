@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.chunking_service.period_extraction import PeriodData
 from src.data_types import (
+    CachedAnswerRecord,
     ChatHistoryPair,
     ChatMessageRecord,
     ChatSessionRecord,
@@ -25,6 +26,7 @@ from .mappers import (
     source_record_from_chunk,
 )
 from .schemas import (
+    AnswerCache,
     ChatExchange,
     ChatSession,
     ChunkEmbeddingTable,
@@ -59,38 +61,56 @@ class PostgresChatService(PostgresControllerContract):
     def setup(self) -> None:
         return
 
-    def get_cached(self, prompt: str, record_id: str) -> ChatMessageRecord | None:
-        hashed_question = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    def get_cached(self, prompt: str, record_id: str) -> CachedAnswerRecord | None:
+        prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
         with self.session_factory() as session:
-            found = session.execute(
-                select(ChatExchange)
-                .join(ChatSession)
-                .where(
-                    (ChatSession.record_id == record_id)
-                    & (ChatExchange.hashed_content == hashed_question)
-                    & (ChatExchange.role == "user")
-                    & (ChatExchange.invalid.is_(False))
-                )
-                .order_by(ChatExchange.created_at.desc())
-                .limit(1)
-            ).scalar_one_or_none()
-
-            if found is None:
-                return None
-
             answer = session.execute(
-                select(ChatExchange)
+                select(AnswerCache)
                 .where(
-                    (ChatExchange.linked_message_id == found.message_id)
-                    & (ChatExchange.role == "assistant")
-                    & (ChatExchange.invalid.is_(False))
+                    (AnswerCache.record_id == record_id)
+                    & (AnswerCache.prompt_hash == prompt_hash)
+                    & (AnswerCache.invalid.is_(False))
                 )
-                .order_by(ChatExchange.created_at.desc())
+                .order_by(AnswerCache.created_at.desc())
                 .limit(1)
             ).scalar_one_or_none()
+
             if answer is None:
                 return None
             return answer.to_pydantic()
+
+    def cache_answer(self, prompt: str, record_id: str, content: str) -> None:
+        prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        with self.session_factory() as session:
+            session.add(
+                AnswerCache(
+                    record_id=record_id,
+                    prompt_hash=prompt_hash,
+                    prompt=prompt,
+                    content=content,
+                    hashed_content=content_hash,
+                )
+            )
+            session.commit()
+
+    def invalidate_cached_answer(self, cache_id: int, hashed_content: str) -> bool:
+        statement = (
+            select(AnswerCache)
+            .where(
+                (AnswerCache.cache_id == cache_id)
+                & (AnswerCache.hashed_content == hashed_content)
+            )
+            .limit(1)
+        )
+        with self.session_factory() as session:
+            cached_answer = session.execute(statement).scalar_one_or_none()
+            if cached_answer is None:
+                return False
+
+            cached_answer.invalid = True
+            session.commit()
+            return True
 
     def soft_delete(self, message_id: int, hashed_content: str) -> bool:
         statement = (
@@ -186,7 +206,10 @@ class PostgresChatService(PostgresControllerContract):
         return self.append_message("user", session_id, content)
 
     def record_assistant_message(
-        self, session_id: UUID | str, content: str, linked_message: ChatMessageRecord
+        self,
+        session_id: UUID | str,
+        content: str,
+        linked_message: ChatMessageRecord,
     ) -> None:
         self.append_message("assistant", session_id, content, linked_message)
 

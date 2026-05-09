@@ -1,5 +1,6 @@
 """Database service interfaces, schemas, and implementations."""
 
+from src.data_types import CachedAnswerRecord as CachedAnswerRecord
 from src.data_types import ChatHistoryPair as ChatHistoryPair
 from src.data_types import ChatMessageRecord as ChatMessageRecord
 from src.data_types import ChatSessionRecord as ChatSessionRecord
@@ -17,6 +18,9 @@ from .mappers import (
 from .postgres_controllers import ChunkStore as ChunkStore
 from .postgres_controllers import PostgresChatService as PostgresChatService
 from .postgres_controllers import PostgresChunkStore as PostgresChunkStore
+from .schemas import (
+    AnswerCache as AnswerCache,
+)
 from .schemas import (
     Base as Base,
 )

@@ -5,9 +5,14 @@ from types import SimpleNamespace
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 
-from src.data_types import ChatHistoryPair, ChatMessageRecord
+from src.data_types import CachedAnswerRecord, ChatHistoryPair, ChatMessageRecord
 from src.db_service.postgres_controllers import PostgresChatService
-from src.db_service.schemas import ChatExchange, ChatSession, SourceRecordTable
+from src.db_service.schemas import (
+    AnswerCache,
+    ChatExchange,
+    ChatSession,
+    SourceRecordTable,
+)
 from src.main import process_question, record_cached_answer
 from src.rag_service import RagAnswer
 
@@ -42,6 +47,7 @@ class PostgresChatServiceTest(unittest.TestCase):
         SourceRecordTable.__table__.create(self.engine)
         ChatSession.__table__.create(self.engine)
         ChatExchange.__table__.create(self.engine)
+        AnswerCache.__table__.create(self.engine)
         self.chat_service = PostgresChatService(self.engine)
         with self.chat_service.session_factory() as session:
             session.add(
@@ -75,6 +81,15 @@ class PostgresChatServiceTest(unittest.TestCase):
         )
         return user_message, assistant_message
 
+    def _record_cached_turn(
+        self,
+        prompt: str = "What changed?",
+        answer: str = rag_answer_json("The cache works."),
+    ) -> tuple[ChatMessageRecord, None]:
+        turn = self._record_turn(prompt, answer)
+        self.chat_service.cache_answer(prompt, "record-1", answer)
+        return turn
+
     def test_record_user_message_persists_and_returns_message_record(self) -> None:
         message = self.chat_service.record_user_message(
             self.chat_session.session_id,
@@ -104,32 +119,37 @@ class PostgresChatServiceTest(unittest.TestCase):
                 assistant_row.linked_message.message_id,
                 user_message.message_id,
             )
+            cached_rows = session.execute(select(AnswerCache)).scalars().all()
+            self.assertEqual(cached_rows, [])
 
-    def test_get_cached_returns_linked_assistant_answer(self) -> None:
-        self._record_turn(
+    def test_get_cached_returns_cached_answer(self) -> None:
+        self._record_cached_turn(
             prompt="What changed?",
-            answer=rag_answer_json("The linked assistant is returned."),
+            answer=rag_answer_json("The cached assistant is returned."),
         )
 
         cached = self.chat_service.get_cached("What changed?", "record-1")
 
-        self.assertIsInstance(cached, ChatMessageRecord)
-        self.assertEqual(cached.role, "assistant")
+        self.assertIsInstance(cached, CachedAnswerRecord)
         self.assertEqual(
             cached.content,
-            rag_answer_json("The linked assistant is returned."),
+            rag_answer_json("The cached assistant is returned."),
         )
 
+        with self.chat_service.session_factory() as session:
+            self.assertEqual(
+                session.execute(select(AnswerCache)).scalar_one().prompt,
+                "What changed?",
+            )
+
     def test_get_cached_ignores_invalid_assistant_answer(self) -> None:
-        self._record_turn(
+        self._record_cached_turn(
             prompt="What changed?",
             answer=rag_answer_json("This answer was invalidated."),
         )
         with self.chat_service.session_factory() as session:
-            assistant_row = session.execute(
-                select(ChatExchange).where(ChatExchange.role == "assistant")
-            ).scalar_one()
-            assistant_row.invalid = True
+            cache_row = session.execute(select(AnswerCache)).scalar_one()
+            cache_row.invalid = True
             session.commit()
 
         cached = self.chat_service.get_cached("What changed?", "record-1")
@@ -137,7 +157,7 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertIsNone(cached)
 
     def test_cached_answer_is_recorded_as_new_history_pair(self) -> None:
-        self._record_turn(
+        self._record_cached_turn(
             prompt="What changed?",
             answer=rag_answer_json("The cached answer is replayed."),
         )
@@ -171,9 +191,12 @@ class PostgresChatServiceTest(unittest.TestCase):
             replayed_cached.content,
             rag_answer_json("The cached answer is replayed."),
         )
+        with self.chat_service.session_factory() as session:
+            cache_count = session.execute(select(AnswerCache)).scalars().all()
+            self.assertEqual(len(cache_count), 1)
 
     def test_process_question_cache_hit_records_one_new_history_pair(self) -> None:
-        self._record_turn(
+        self._record_cached_turn(
             prompt="What changed?",
             answer=rag_answer_json("The cached answer is replayed."),
         )
@@ -196,6 +219,34 @@ class PostgresChatServiceTest(unittest.TestCase):
         self.assertEqual(updated_session.message_count, 4)
         history = self.chat_service.show_history(self.chat_session.session_id, limit=4)
         self.assertEqual(len(history), 2)
+        with self.chat_service.session_factory() as session:
+            cache_count = session.execute(select(AnswerCache)).scalars().all()
+            self.assertEqual(len(cache_count), 1)
+
+    def test_process_question_cache_miss_records_cache_in_process_question(
+        self,
+    ) -> None:
+        answer_service = FakeAnswerService(
+            [RagAnswer(answer="fresh", citations=["chunk-1"])]
+        )
+
+        response = process_question(
+            "What changed?",
+            "record-1",
+            self.chat_session,
+            SimpleNamespace(caching=True),
+            self.chat_service,
+            answer_service,
+        )
+
+        self.assertIsNotNone(response)
+        self.assertEqual(response.answer, "fresh")
+        cached = self.chat_service.get_cached("What changed?", "record-1")
+        self.assertIsNotNone(cached)
+        self.assertEqual(
+            RagAnswer.model_validate_json(cached.content).answer,
+            "fresh",
+        )
 
     def test_process_question_requery_records_only_final_history_pair(self) -> None:
         answer_service = FakeAnswerService(
@@ -250,11 +301,11 @@ class PostgresChatServiceTest(unittest.TestCase):
     def test_get_cached_handles_duplicate_prompts_without_multiple_rows_error(
         self,
     ) -> None:
-        self._record_turn(
+        self._record_cached_turn(
             prompt="Repeatable?",
             answer=rag_answer_json("First answer."),
         )
-        self._record_turn(
+        self._record_cached_turn(
             prompt="Repeatable?",
             answer=rag_answer_json("Second answer."),
         )
@@ -262,7 +313,6 @@ class PostgresChatServiceTest(unittest.TestCase):
         cached = self.chat_service.get_cached("Repeatable?", "record-1")
 
         self.assertIsNotNone(cached)
-        self.assertEqual(cached.role, "assistant")
         self.assertIn(
             cached.content,
             {

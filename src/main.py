@@ -5,7 +5,7 @@ from pydantic import ValidationError
 from rich import print as rich_print
 
 from src.config import Settings
-from src.data_types import ChatHistoryPair, ChatMessageRecord, ChatSessionRecord
+from src.data_types import CachedAnswerRecord, ChatHistoryPair, ChatSessionRecord
 from src.db_service.postgres_controllers import PostgresChatService
 from src.logger import get_logger
 from src.rag_service import RagAnswer, RAGService
@@ -21,7 +21,7 @@ app = typer.Typer(
 
 
 def validate_cached_answer(
-    cached: ChatMessageRecord,
+    cached: CachedAnswerRecord,
     record_id: str,
     chat_service: PostgresChatService,
 ) -> RagAnswer | None:
@@ -31,25 +31,25 @@ def validate_cached_answer(
     except ValidationError:
         logger.exception("Cached answer failed validation for record_id=%s", record_id)
         rich_print("[red]Cached answer was not valid. Please try again.[/red]")
-        if cached.message_id is None:
-            logger.warning("Could not invalidate cached answer without message_id")
+        if cached.cache_id is None:
+            logger.warning("Could not invalidate cached answer without cache_id")
             return None
 
         try:
-            invalidated = chat_service.soft_delete(
-                cached.message_id,
+            invalidated = chat_service.invalidate_cached_answer(
+                cached.cache_id,
                 cached.hashed_content,
             )
         except Exception:
             logger.exception(
-                "Failed to invalidate cached answer for message_id=%s",
-                cached.message_id,
+                "Failed to invalidate cached answer for cache_id=%s",
+                cached.cache_id,
             )
         else:
             if not invalidated:
                 logger.warning(
-                    "No cached answer invalidated for message_id=%s",
-                    cached.message_id,
+                    "No cached answer invalidated for cache_id=%s",
+                    cached.cache_id,
                 )
         return None
 
@@ -58,7 +58,7 @@ def record_cached_answer(
     chat_service: PostgresChatService,
     message: str,
     session: ChatSessionRecord,
-    cached: ChatMessageRecord,
+    cached: CachedAnswerRecord,
     record_id: str,
 ) -> RagAnswer | None:
     response = validate_cached_answer(cached, record_id, chat_service)
@@ -112,7 +112,7 @@ def process_question(
     settings: Settings,
     chat_service: PostgresChatService,
     answer_service: RAGService,
-):
+) -> RagAnswer | None:
     if settings.caching and (cached := chat_service.get_cached(message, record_id)):
         response = record_cached_answer(
             chat_service,
@@ -138,13 +138,18 @@ def process_question(
             record_id,
             is_requery=True,
         )
+        if response is not None:
+            response = response.model_copy(update={"requery": requery})
 
     if response is None:
         return None
 
+    answer_content = response.model_dump_json()
     chat_service.record_assistant_message(
-        session.session_id, response.model_dump_json(), user_chat_exchange
+        session.session_id, answer_content, user_chat_exchange
     )
+    if settings.caching:
+        chat_service.cache_answer(message, record_id, answer_content)
     return response
 
 

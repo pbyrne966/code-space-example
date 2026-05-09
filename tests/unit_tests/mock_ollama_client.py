@@ -63,7 +63,6 @@ class MockOllamaClient(ModelClient):
     def query_single(
         self,
         prompt: str,
-        http_method: str = "POST",
         response_format: dict | str | None = None,
     ) -> ModelOutput:
         self.prompts.append(prompt)

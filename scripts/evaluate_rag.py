@@ -59,7 +59,6 @@ class QuestionComplexity(BaseModel):
 # Prescion & Recall -> The Rock Curve and F1 Score
 # Stress Testing & Load Balancer Chain of thought tasks
 # Chain prompts on year and stress test the context window
-# Test For Misleading context -> when did this author write book
 # Test for open ended quistions and trick quistions
 
 
@@ -69,7 +68,6 @@ class EvaluationSummary(BaseModel):
     total_examples: int = 0
     answered_examples: int = 0
     failed_examples: int = 0
-    # retrieval_recall_at_k: float | None = None
     answer_accuracy: float | None = None
     citation_validity: float | None = None
     average_latency_seconds: float | None = None

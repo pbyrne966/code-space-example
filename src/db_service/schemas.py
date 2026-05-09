@@ -28,6 +28,7 @@ from sqlalchemy.orm import (
 )
 
 from src.data_types import (
+    CachedAnswerRecord,
     ChatMessageRecord,
     ChatSessionRecord,
     ChunkType,
@@ -392,6 +393,49 @@ class ChatExchange(Base):
             hashed_content=self.hashed_content
             if self.hashed_content is not None
             else hashlib.sha256(self.content.encode("utf-8")).hexdigest(),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+
+
+class AnswerCache(Base):
+    """Cached assistant answers keyed by source record and prompt hash."""
+
+    __tablename__ = "answer_cache"
+    __table_args__ = (
+        Index("ix_answer_cache_record_prompt", "record_id", "prompt_hash"),
+        Index("ix_answer_cache_hashed_content", "hashed_content"),
+    )
+
+    cache_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=True
+    )
+    record_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    prompt_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    hashed_content: Mapped[str] = mapped_column(String(64), nullable=False)
+    invalid: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    def to_pydantic(self) -> CachedAnswerRecord:
+        """Serialize the ORM row into the cache read model."""
+        return CachedAnswerRecord(
+            cache_id=self.cache_id,
+            record_id=self.record_id,
+            prompt_hash=self.prompt_hash,
+            content=self.content,
+            hashed_content=self.hashed_content,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
